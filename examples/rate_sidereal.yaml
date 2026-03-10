@@ -1,0 +1,66 @@
+# Rate-sidereal mode: first 6 frames are rate-track (stars streak, tracked
+# targets sharp), last 2 frames are sidereal (stars sharp, targets streak).
+# Same star field across all frames.
+#
+# Target velocities are in the inertial (star-fixed) frame.  During
+# rate-track frames, scene.render() automatically converts to sensor frame.
+#
+# Usage:
+#   import sdasim
+#   scene = sdasim.Scene.from_yaml("examples/rate_sidereal.yaml")
+#   images, annotations = scene.render_sequence()
+#   sdasim.io.write_sequence(images, annotations, "output/rate_sidereal/")
+
+mode: rate_sidereal
+sidereal_start: 6        # frames 0-5 rate-track, 6-7 sidereal
+
+sensor:
+  height: 512
+  width: 512
+  y_fov: 0.5
+  x_fov: 0.5
+  exposure: 2.0
+  gap: 0.5
+  num_frames: 8
+  zeropoint: 23.5
+  psf_sigma: 0.6
+  dark_current: 1.0
+  read_noise: 1.0
+  electronic_noise: 5.0
+  background_mv: 21.0
+  bias: 50.0
+  gain: 8.0
+  fwc: 100000.0
+  a2d_bias: 500.0
+  a2d_dtype: uint16
+
+stars:
+  mode: bins
+  mv_bins: [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18]
+  density: [0.04, 0.10, 0.67, 2.48, 5.0, 10.27, 24.33, 35.19, 60.02, 110.1, 180.3, 285.5]
+
+# Star motion defines the tracking rate (sensor slews at this rate).
+# Stars streak at this rate in rate-track frames, are stationary in sidereal.
+star_motion:
+  rotation: 0.0
+  translation: [3.0, -5.0]
+  temporal_osf: 100
+
+# Target velocities are INERTIAL (star-fixed frame).
+# On-rate target: V_inertial ~ -translation -> appears ~stationary when tracked.
+# Off-rate target: arbitrary V_inertial -> streaks in both modes.
+targets:
+  - mode: line
+    origin: [0.5, 0.5]
+    velocity: [-3.0, 5.0]     # on-rate (≈ -translation)
+    mv: 14.0
+
+  - mode: line
+    origin: [0.3, 0.7]
+    velocity: [5.0, -2.0]     # off-rate
+    mv: 12.0
+
+seed: 42
+device: auto
+enable_shot_noise: true
+enable_read_noise: true

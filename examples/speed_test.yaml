@@ -1,0 +1,67 @@
+# Speed test: 1000 frames, no disk I/O.
+# Simulates the "in-training differentiable renderer" use case where
+# frames are generated on-the-fly inside a training loop.
+#
+# Usage:
+#   import time
+#   import sdasim
+#
+#   scene = sdasim.Scene.from_yaml("examples/speed_test.yaml")
+#
+#   # Warmup
+#   scene.render(0)
+#
+#   t0 = time.perf_counter()
+#   for i in range(1000):
+#       img, meta = scene.render(i)
+#   elapsed = time.perf_counter() - t0
+#   print(f"1000 frames in {elapsed:.2f}s ({1000/elapsed:.1f} fps)")
+#
+# For differentiable mode (gradient flow through renderer):
+#   import torch
+#   sigma = torch.tensor(1.5, requires_grad=True)
+#   img, meta = scene.render(0, psf_sigma=sigma)
+#   loss = img.sum()
+#   loss.backward()
+#   print(f"d(loss)/d(sigma) = {sigma.grad}")
+
+sensor:
+  height: 512
+  width: 512
+  y_fov: 0.5
+  x_fov: 0.5
+  exposure: 1.0
+  gap: 0.25            # no gap — maximum throughput
+  num_frames: 1000
+  zeropoint: 23.5
+  psf_sigma: 1.5
+  dark_current: 10.0
+  read_noise: 10.0
+  electronic_noise: 5.0
+  background_mv: 21.0
+  bias: 50.0
+  gain: 8.0
+  fwc: 100000.0
+  a2d_bias: 500.0
+  a2d_dtype: uint16
+
+stars:
+  mode: bins
+  mv_bins: [10, 11, 12, 13, 14, 15, 16, 17, 18]
+  density: [5.0, 10.27, 24.33, 35.19, 60.02, 110.1, 180.3, 285.5]
+
+star_motion:
+  rotation: 0.0
+  translation: [2.0, -3.0]
+  temporal_osf: 50            # moderate OSF — balance speed vs quality
+
+targets:
+  - mode: line
+    origin: [0.5, 0.5]
+    velocity: [5.0, 8.0]
+    mv: 13.0
+
+seed: 7
+device: auto
+enable_shot_noise: true
+enable_read_noise: true

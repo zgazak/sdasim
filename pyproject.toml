@@ -1,0 +1,58 @@
+[build-system]
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+[project]
+name = "sdasim"
+dynamic = ["version"]
+description = "Speed-optimized differentiable satellite scene simulator"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+dependencies = [
+    "torch>=2.2",
+    "numpy>=1.26",
+    "pyyaml>=6.0",
+    "nvitop>=1.6.2",
+]
+
+[project.optional-dependencies]
+catalogs = ["astropy>=6.0"]
+compat = ["satsim"]
+fits = ["astropy>=6.0"]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.3",
+]
+
+[project.scripts]
+sdasim = "sdasim.cli:main"
+
+[tool.hatch.version]
+source = "vcs"
+fallback-version = "0.1.0"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/sdasim"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+
+[tool.uv]
+conflicts = [
+    [
+        { extra = "compat" },
+        { extra = "catalogs" },
+    ],
+    [
+        { extra = "compat" },
+        { extra = "fits" },
+    ],
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
