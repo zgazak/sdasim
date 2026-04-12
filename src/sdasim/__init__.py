@@ -12,9 +12,10 @@ from sdasim.config import (
 from sdasim.device import get_device, resolve_device, set_device
 from sdasim.fpa import analog_to_digital, eod_to_sigma, mv_to_pe, pe_to_mv
 from sdasim.noise import gaussian_noise, poisson_noise
+from sdasim.batch import BatchRenderResult, render_scene_batch
 from sdasim.render import expand_motion, render_frame
 from sdasim.scene import Scene
-from sdasim.splat import splat_gaussians
+from sdasim.splat import splat_gaussians, splat_gaussians_batched
 
 def __getattr__(name: str):
     if name == "io":
@@ -42,6 +43,7 @@ __all__ = [
     "resolve_device",
     # Core
     "splat_gaussians",
+    "splat_gaussians_batched",
     "poisson_noise",
     "gaussian_noise",
     "analog_to_digital",
@@ -51,6 +53,8 @@ __all__ = [
     # Render
     "render_frame",
     "expand_motion",
+    "render_scene_batch",
+    "BatchRenderResult",
     # Scene
     "Scene",
     # Config
