@@ -102,3 +102,9 @@ conflicts = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.coverage.run]
+omit = ["tests/**", "docs/**", "scripts/**"]
+
+[tool.coverage.report]
+omit = ["tests/**", "docs/**", "scripts/**"]

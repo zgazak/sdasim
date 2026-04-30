@@ -15,7 +15,7 @@ uv run pytest         # Run tests (71 tests, <1s)
 
 ## Architecture
 
-```
+```bash
 src/sdasim/
   splat.py       # Core: analytical Gaussian splatting kernel (THE hot path)
   render.py      # Pipeline: splat → noise → A/D. Contains expand_motion() for motion blur
