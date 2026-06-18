@@ -27,9 +27,7 @@ class SceneDistribution:
     All range fields are (min, max) inclusive. Lists are sampled uniformly.
     """
 
-    modes: list[str] = field(
-        default_factory=lambda: ["sidereal", "rate_track", "rate_sidereal"]
-    )
+    modes: list[str] = field(default_factory=lambda: ["sidereal", "rate_track", "rate_sidereal"])
     mode_weights: list[float] | None = None  # uniform if None
 
     height: int = 256
@@ -59,7 +57,18 @@ class SceneDistribution:
     )
     star_density: list[float] = field(
         default_factory=lambda: [
-            0.04, 0.10, 0.67, 2.48, 5.0, 10.27, 24.33, 35.19, 60.02, 110.1, 180.3, 285.5,
+            0.04,
+            0.10,
+            0.67,
+            2.48,
+            5.0,
+            10.27,
+            24.33,
+            35.19,
+            60.02,
+            110.1,
+            180.3,
+            285.5,
         ]
     )
 
@@ -77,6 +86,52 @@ class SceneDistribution:
     # Noise
     enable_shot_noise: bool = True
     enable_read_noise: bool = True
+
+    # Empirical (calibration-driven) rendering — see SceneDistribution.from_calibration()
+    psf_model: str = "gaussian"
+    noise_model: str = "basic"
+    empirical_psf_path: str | None = None
+    empirical_noise_path: str | None = None
+    empirical_streak_path: str | None = None
+    psf_param_scale: float = 1.0
+    streak_param_sample: bool = False
+    streak_param_extend: float = 1.0
+    apply_rowcol_median: bool = True
+
+    @classmethod
+    def from_calibration(cls, calib_dir: str, extend: float = 1.3, **overrides):
+        """Build a distribution that generates data matching (and ~`extend`× past) a calibration
+        produced by ``sdasim.calibrate``.
+
+        Enables empirical PSF/noise/streak rendering + per-streak amplitude sampling, sets the
+        gain and the streak-rate range from the measured distributions. Streak ORIENTATION stays
+        uniform over the full rotation (the sampler draws velocity direction over 0..2π).
+        """
+        import json
+        import os
+
+        noise = json.load(open(os.path.join(calib_dir, "noise_model.json")))
+        streak = json.load(open(os.path.join(calib_dir, "streak_model.json")))
+        rate_m, rate_s = streak.get("dist_rate_px_s", [10.0, 5.0])
+        lo, hi = max(0.5, rate_m - extend * rate_s), rate_m + extend * rate_s
+        kw = dict(
+            psf_model="empirical",
+            noise_model="empirical",
+            empirical_psf_path=os.path.join(calib_dir, "psf_basis.npz"),
+            empirical_noise_path=os.path.join(calib_dir, "noise_model.json"),
+            empirical_streak_path=os.path.join(calib_dir, "streak_model.json"),
+            psf_param_scale=extend,
+            streak_param_sample=True,
+            streak_param_extend=extend,
+            gain=float(noise.get("gain_e_per_adu", 1.0)),
+            tracking_rate_range=(lo, hi),  # star-trail rate (rate_track mode)
+            off_rate_speed_range=(
+                lo,
+                hi,
+            ),  # target-streak rate (sidereal mode); orientation uniform
+        )
+        kw.update(overrides)
+        return cls(**kw)
 
 
 def random_scene(
@@ -133,6 +188,15 @@ def random_scene(
         fwc=dist.fwc,
         a2d_bias=dist.a2d_bias,
         a2d_dtype=dist.a2d_dtype,
+        psf_model=dist.psf_model,
+        noise_model=dist.noise_model,
+        empirical_psf_path=dist.empirical_psf_path,
+        empirical_noise_path=dist.empirical_noise_path,
+        empirical_streak_path=dist.empirical_streak_path,
+        psf_param_scale=dist.psf_param_scale,
+        streak_param_sample=dist.streak_param_sample,
+        streak_param_extend=dist.streak_param_extend,
+        apply_rowcol_median=dist.apply_rowcol_median,
     )
 
     stars = StarFieldConfig(
@@ -167,12 +231,14 @@ def random_scene(
         residual_c = rng.uniform(-dist.on_rate_residual_range[1], dist.on_rate_residual_range[1])
         v_inertial = [-translation[0] + residual_r, -translation[1] + residual_c]
 
-        targets.append(TargetConfig(
-            mode="line",
-            origin=[rng.uniform(0.2, 0.8), rng.uniform(0.2, 0.8)],
-            velocity=v_inertial,
-            mv=rng.uniform(*dist.target_mv_range),
-        ))
+        targets.append(
+            TargetConfig(
+                mode="line",
+                origin=[rng.uniform(0.2, 0.8), rng.uniform(0.2, 0.8)],
+                velocity=v_inertial,
+                mv=rng.uniform(*dist.target_mv_range),
+            )
+        )
 
     for _ in range(n_off):
         # Off-rate targets: random inertial velocity (streaks in both modes)
@@ -183,12 +249,14 @@ def random_scene(
             off_speed * math.sin(off_angle),
         ]
 
-        targets.append(TargetConfig(
-            mode="line",
-            origin=[rng.uniform(0.1, 0.9), rng.uniform(0.1, 0.9)],
-            velocity=v_inertial,
-            mv=rng.uniform(*dist.target_mv_range),
-        ))
+        targets.append(
+            TargetConfig(
+                mode="line",
+                origin=[rng.uniform(0.1, 0.9), rng.uniform(0.1, 0.9)],
+                velocity=v_inertial,
+                mv=rng.uniform(*dist.target_mv_range),
+            )
+        )
 
     # Build config based on mode
     # For mode=None (sidereal/rate_track), convert inertial → sensor frame at config time.

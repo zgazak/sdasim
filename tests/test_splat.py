@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import torch
-import pytest
 
 from sdasim.splat import splat_gaussians
 

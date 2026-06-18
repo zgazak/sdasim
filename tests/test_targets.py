@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-import torch
-import pytest
-
-from sdasim.config import TargetConfig, SensorConfig
+from sdasim.config import SensorConfig, TargetConfig
 from sdasim.targets import compute_target_positions
 
 

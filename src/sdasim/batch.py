@@ -25,12 +25,11 @@ import torch
 from torch import Tensor
 
 from sdasim.fpa import MAX_PIXEL_VALUE
-from sdasim.noise import gaussian_noise, poisson_noise
+from sdasim.noise import poisson_noise
 from sdasim.render import expand_motion
 from sdasim.scene import Scene
 from sdasim.splat import splat_gaussians_batched
 from sdasim.targets import compute_target_positions
-
 
 _CACHE_ATTR = "_batch_source_cache"
 
@@ -55,15 +54,17 @@ def _ensure_source_cache(scene: Scene) -> dict:
     # --- Stars with within-frame motion blur ---
     sp = scene.star_positions
     si = scene.star_intensities
-    has_motion = (
-        sm.rotation != 0.0
-        or sm.translation[0] != 0.0
-        or sm.translation[1] != 0.0
-    )
+    has_motion = sm.rotation != 0.0 or sm.translation[0] != 0.0 or sm.translation[1] != 0.0
     if has_motion and sm.temporal_osf > 1 and sp.shape[0] > 0:
         star_pos, star_int = expand_motion(
-            sp, si, sm.translation, sm.rotation,
-            0.0, sensor.exposure, sm.temporal_osf, center,
+            sp,
+            si,
+            sm.translation,
+            sm.rotation,
+            0.0,
+            sensor.exposure,
+            sm.temporal_osf,
+            center,
         )
     else:
         star_pos, star_int = sp, si
@@ -76,7 +77,14 @@ def _ensure_source_cache(scene: Scene) -> dict:
         tgt_osf = max(1, int(streak_px * 2))
         if tgt_osf > 1:
             tgt_pos, tgt_int = expand_motion(
-                tp, ti, tv, 0.0, 0.0, sensor.exposure, tgt_osf, center,
+                tp,
+                ti,
+                tv,
+                0.0,
+                0.0,
+                sensor.exposure,
+                tgt_osf,
+                center,
             )
         else:
             tgt_pos, tgt_int = tp, ti
@@ -177,6 +185,22 @@ def _collect_cached(
     return positions, intensities, frame_ids, per_source_sigma
 
 
+def _render_batch_empirical(scenes: Sequence[Scene]) -> BatchRenderResult:
+    """Empirical-mode batch: each scene has its own sampled PSF kernel + per-scene FFT, so it
+    can't fuse into a single splat like the Gaussian path. Render each via the full empirical
+    pipeline (Scene.render_signals) and stack. FFTs still run on-GPU per scene."""
+    device = scenes[0].device
+    digs, ss, ts, pf = [], [], [], []
+    for s in scenes:
+        d, star_sig, tgt_sig, _ = s.render_signals(0)
+        digs.append(d)
+        ss.append(star_sig)
+        ts.append(tgt_sig)
+        pf.append(s.star_positions)
+    num_stars = torch.tensor([p.shape[0] for p in pf], dtype=torch.long, device=device)
+    return BatchRenderResult(torch.stack(digs), torch.stack(ss), torch.stack(ts), pf, num_stars)
+
+
 def render_scene_batch(scenes: Sequence[Scene]) -> BatchRenderResult:
     """Render N scenes in a single fused pass.
 
@@ -209,14 +233,18 @@ def render_scene_batch(scenes: Sequence[Scene]) -> BatchRenderResult:
                 f"got {(s.sensor.height, s.sensor.width)} vs {(H, W)}"
             )
         if s.sensor.a2d_dtype != a2d_dtype:
-            raise ValueError(
-                "render_scene_batch requires all scenes to share a2d_dtype"
-            )
+            raise ValueError("render_scene_batch requires all scenes to share a2d_dtype")
         if s.config.mode is not None:
             raise ValueError(
                 "render_scene_batch only supports mode=None (sidereal/rate_track); "
                 f"got mode={s.config.mode}"
             )
+
+    # Empirical scenes use per-scene sampled kernels + FFT -> render per-scene and stack.
+    if any(
+        s.sensor.psf_model == "empirical" or s.sensor.noise_model == "empirical" for s in scenes
+    ):
+        return _render_batch_empirical(scenes)
 
     # Ensure caches exist (lazy, idempotent on pool scenes).
     for s in scenes:
@@ -229,10 +257,22 @@ def render_scene_batch(scenes: Sequence[Scene]) -> BatchRenderResult:
     # Single fused splat per kind. splat_gaussians_batched handles the empty
     # source case by returning zeros of the right shape.
     star_signal = splat_gaussians_batched(
-        B, H, W, star_pos, star_int, star_fid, star_sig,
+        B,
+        H,
+        W,
+        star_pos,
+        star_int,
+        star_fid,
+        star_sig,
     )
     target_signal = splat_gaussians_batched(
-        B, H, W, tgt_pos, tgt_int, tgt_fid, tgt_sig,
+        B,
+        H,
+        W,
+        tgt_pos,
+        tgt_int,
+        tgt_fid,
+        tgt_sig,
     )
 
     signal = star_signal + target_signal
@@ -240,13 +280,19 @@ def render_scene_batch(scenes: Sequence[Scene]) -> BatchRenderResult:
     # Per-frame scalar params from cache. Build a single tensor per param.
     caches = [getattr(s, _CACHE_ATTR) for s in scenes]
     bg = torch.tensor(
-        [c["background_pe"] for c in caches], dtype=torch.float32, device=device,
+        [c["background_pe"] for c in caches],
+        dtype=torch.float32,
+        device=device,
     ).view(B, 1, 1)
     dc = torch.tensor(
-        [c["dark_current_pe"] for c in caches], dtype=torch.float32, device=device,
+        [c["dark_current_pe"] for c in caches],
+        dtype=torch.float32,
+        device=device,
     ).view(B, 1, 1)
     bias = torch.tensor(
-        [c["bias_pe"] for c in caches], dtype=torch.float32, device=device,
+        [c["bias_pe"] for c in caches],
+        dtype=torch.float32,
+        device=device,
     ).view(B, 1, 1)
 
     signal = signal + bg + dc + bias
@@ -257,23 +303,26 @@ def render_scene_batch(scenes: Sequence[Scene]) -> BatchRenderResult:
         signal = poisson_noise(signal)
     if enable_read:
         rn_sigma = torch.tensor(
-            [
-                math.sqrt(c["read_noise"] ** 2 + c["electronic_noise"] ** 2)
-                for c in caches
-            ],
+            [math.sqrt(c["read_noise"] ** 2 + c["electronic_noise"] ** 2) for c in caches],
             dtype=torch.float32,
             device=device,
         ).view(B, 1, 1)
         signal = signal + rn_sigma * torch.randn_like(signal)
 
     a2d_bias_t = torch.tensor(
-        [c["a2d_bias"] for c in caches], dtype=torch.float32, device=device,
+        [c["a2d_bias"] for c in caches],
+        dtype=torch.float32,
+        device=device,
     ).view(B, 1, 1)
     fwc_t = torch.tensor(
-        [c["fwc"] for c in caches], dtype=torch.float32, device=device,
+        [c["fwc"] for c in caches],
+        dtype=torch.float32,
+        device=device,
     ).view(B, 1, 1)
     gain_t = torch.tensor(
-        [c["gain"] for c in caches], dtype=torch.float32, device=device,
+        [c["gain"] for c in caches],
+        dtype=torch.float32,
+        device=device,
     ).view(B, 1, 1)
 
     biased = (signal + a2d_bias_t).clamp(min=0.0)

@@ -18,7 +18,9 @@ from functools import lru_cache
 import numpy as np
 from astropy import wcs
 
-DEFAULT_SSTR7_PATH = "/stars/data/share/sstrc7"
+# SSTRC7 catalog location. Override with the SDASIM_SSTR7_PATH environment
+# variable, or by passing `catalog_path` in the scene config.
+DEFAULT_SSTR7_PATH = os.environ.get("SDASIM_SSTR7_PATH", "sstrc7")
 
 RECORD_LEN = 30  # 30 unsigned shorts = 60 bytes
 RECORD_LEN_BYTES = RECORD_LEN * 2
@@ -27,6 +29,7 @@ RECORD_LEN_BYTES = RECORD_LEN * 2
 # ---------------------------------------------------------------------------
 # Index and zone I/O
 # ---------------------------------------------------------------------------
+
 
 @lru_cache(maxsize=10)
 def load_index(filename: str, numRaZones: int = 60, numDecZones: int = 1800):
@@ -43,8 +46,13 @@ def load_index(filename: str, numRaZones: int = 60, numDecZones: int = 1800):
 
 
 def select_zone(
-    ra_min: float, ra_max: float, dec_min: float, dec_max: float,
-    zoneIndex: list, numRaZones: int = 60, numDecZones: int = 1800,
+    ra_min: float,
+    ra_max: float,
+    dec_min: float,
+    dec_max: float,
+    zoneIndex: list,
+    numRaZones: int = 60,
+    numDecZones: int = 1800,
 ):
     """Select zones that intersect with the given RA/Dec bounds (radians)."""
     decZoneLimit = numDecZones - 1
@@ -68,17 +76,14 @@ def select_zone(
                 }
                 if bound_func == 0:
                     selectZone["bound"] = (
-                        "maxRA" if ((ra + 1) * zoneWidth > ra_max)
+                        "maxRA"
+                        if ((ra + 1) * zoneWidth > ra_max)
                         else ("minRA" if (ra * zoneWidth < ra_min) else "inside")
                     )
                 elif bound_func == 1:
-                    selectZone["bound"] = (
-                        "minRA" if (ra * zoneWidth < ra_max) else "inside"
-                    )
+                    selectZone["bound"] = "minRA" if (ra * zoneWidth < ra_max) else "inside"
                 elif bound_func == 2:
-                    selectZone["bound"] = (
-                        "maxRA" if (ra * zoneWidth > ra_min) else "inside"
-                    )
+                    selectZone["bound"] = "maxRA" if (ra * zoneWidth > ra_min) else "inside"
                 if selectZone["length"] > 0:
                     selectZoneList.append(selectZone)
 
@@ -112,17 +117,24 @@ def load_zone(currentZone, rootPath):
 # Star record parsing
 # ---------------------------------------------------------------------------
 
+
 def get_star_mv(mv: np.ndarray) -> float:
     """Pick the best available magnitude for open-band (silicon) response.
 
     Priority: Johnson_V > Johnson_R > Sloan_r > Gaia_G > Sloan_g > Johnson_B.
     """
-    if mv[4] < 32:   return mv[4]   # Johnson_V
-    if mv[5] < 32:   return mv[5]   # Johnson_R
-    if mv[8] < 32:   return mv[8]   # Sloan_r
-    if mv[0] < 32:   return mv[0]   # Gaia_G
-    if mv[7] < 32:   return mv[7]   # Sloan_g
-    if mv[3] < 32:   return mv[3]   # Johnson_B
+    if mv[4] < 32:
+        return mv[4]  # Johnson_V
+    if mv[5] < 32:
+        return mv[5]  # Johnson_R
+    if mv[8] < 32:
+        return mv[8]  # Sloan_r
+    if mv[0] < 32:
+        return mv[0]  # Gaia_G
+    if mv[7] < 32:
+        return mv[7]  # Sloan_g
+    if mv[3] < 32:
+        return mv[3]  # Johnson_B
     return 32.0
 
 
@@ -141,10 +153,28 @@ def read_star(buffer: bytes, filter_center: float | None = None):
     ra_raw, dec_raw = raw[0], raw[1]
 
     if filter_center is not None:
-        centers = np.array([
-            600, 500, 800, 440, 548, 700, 900, 477, 622, 762,
-            913, 1235, 1662, 2159, 3400, 4600, 12000, 22000,
-        ])
+        centers = np.array(
+            [
+                600,
+                500,
+                800,
+                440,
+                548,
+                700,
+                900,
+                477,
+                622,
+                762,
+                913,
+                1235,
+                1662,
+                2159,
+                3400,
+                4600,
+                12000,
+                22000,
+            ]
+        )
         valid = (raw_mv_array < 32) & (raw_mv_array > -32)
         c = centers[valid]
         m = raw_mv_array[valid]
@@ -163,8 +193,12 @@ def read_star(buffer: bytes, filter_center: float | None = None):
 
 @lru_cache(maxsize=1024)
 def _load_stars_for_zone(
-    zone_id: int, pos: int, length: int, bound: str,
-    rootPath: str, filter_center: float | None = None,
+    zone_id: int,
+    pos: int,
+    length: int,
+    bound: str,
+    rootPath: str,
+    filter_center: float | None = None,
 ):
     """Load and parse stars for a single zone (cached)."""
     buf, start, end = load_zone({"id": zone_id, "pos": pos, "length": length}, rootPath)
@@ -175,7 +209,7 @@ def _load_stars_for_zone(
         indices = reversed(range(nrec))
     for i in indices:
         s = i * RECORD_LEN_BYTES
-        star = read_star(buf[s:s + RECORD_LEN_BYTES], filter_center=filter_center)
+        star = read_star(buf[s : s + RECORD_LEN_BYTES], filter_center=filter_center)
         stars.append(star)
     return stars
 
@@ -184,25 +218,40 @@ def _load_stars_for_zone(
 # Query functions
 # ---------------------------------------------------------------------------
 
+
 def query_by_min_max(
-    ra_min: float, ra_max: float, dec_min: float, dec_max: float,
+    ra_min: float,
+    ra_max: float,
+    dec_min: float,
+    dec_max: float,
     rootPath: str = DEFAULT_SSTR7_PATH,
     clip_min_max: bool = True,
     filter_center: float | None = None,
 ):
     """Query catalog by RA/Dec bounds (radians)."""
     zoneIndex = load_index(
-        os.path.join(rootPath, "sstrc.acc"), numRaZones=60, numDecZones=1800,
+        os.path.join(rootPath, "sstrc.acc"),
+        numRaZones=60,
+        numDecZones=1800,
     )
     zones = select_zone(
-        ra_min, ra_max, dec_min, dec_max, zoneIndex,
-        numRaZones=60, numDecZones=1800,
+        ra_min,
+        ra_max,
+        dec_min,
+        dec_max,
+        zoneIndex,
+        numRaZones=60,
+        numDecZones=1800,
     )
 
     stars = []
     for z in zones:
         ss = _load_stars_for_zone(
-            z["id"], z["pos"], z["length"], z["bound"], rootPath,
+            z["id"],
+            z["pos"],
+            z["length"],
+            z["bound"],
+            rootPath,
             filter_center=filter_center,
         )
         if clip_min_max:
@@ -233,23 +282,34 @@ def _get_wcs(height, width, y_ifov, x_ifov, ra, dec, rot=0.0):
 
 
 def _get_min_max_ra_dec(
-    height, width, y_ifov, x_ifov, ra, dec, rot=0.0, pad_mult=0.0, origin="center",
+    height,
+    width,
+    y_ifov,
+    x_ifov,
+    ra,
+    dec,
+    rot=0.0,
+    pad_mult=0.0,
+    origin="center",
 ):
     """Compute RA/Dec bounding box for the focal plane."""
     w = _get_wcs(height, width, y_ifov, x_ifov, ra, dec, rot)
 
     hp = height * pad_mult
     wp = width * pad_mult
-    pixcrd = np.array([
-        [-wp, -hp],
-        [-wp, height * 0.5],
-        [-wp, height + hp],
-        [width * 0.5, height + hp],
-        [width + wp, height + hp],
-        [width + wp, height * 0.5],
-        [width + wp, -hp],
-        [width * 0.5, -hp],
-    ], np.float64)
+    pixcrd = np.array(
+        [
+            [-wp, -hp],
+            [-wp, height * 0.5],
+            [-wp, height + hp],
+            [width * 0.5, height + hp],
+            [width + wp, height + hp],
+            [width + wp, height * 0.5],
+            [width + wp, -hp],
+            [width * 0.5, -hp],
+        ],
+        np.float64,
+    )
 
     center = np.array([[width / 2.0, height / 2.0]])
 
@@ -269,18 +329,10 @@ def _get_min_max_ra_dec(
     northpole = w.wcs_world2pix([[0, 89.99999]], 1)[0]
     southpole = w.wcs_world2pix([[0, -89.99999]], 1)[0]
 
-    if (
-        not np.any(np.isnan(northpole))
-        and 0 < northpole[0] < width
-        and 0 < northpole[1] < height
-    ):
+    if not np.any(np.isnan(northpole)) and 0 < northpole[0] < width and 0 < northpole[1] < height:
         cmin = [0, minPhi]
         cmax = [360.0, 90.0]
-    elif (
-        not np.any(np.isnan(southpole))
-        and 0 < southpole[0] < width
-        and 0 < southpole[1] < height
-    ):
+    elif not np.any(np.isnan(southpole)) and 0 < southpole[0] < width and 0 < southpole[1] < height:
         cmin = [0, -90.0]
         cmax = [360.0, maxPhi]
     elif cra > maxTheta or cra < minTheta or (maxTheta - minTheta) > 180:
@@ -294,9 +346,13 @@ def _get_min_max_ra_dec(
 
 
 def query_by_los(
-    height: int, width: int,
-    y_fov: float, x_fov: float,
-    ra: float, dec: float, rot: float = 0.0,
+    height: int,
+    width: int,
+    y_fov: float,
+    x_fov: float,
+    ra: float,
+    dec: float,
+    rot: float = 0.0,
     rootPath: str = DEFAULT_SSTR7_PATH,
     pad_mult: float = 0.0,
     origin: str = "center",
@@ -323,14 +379,26 @@ def query_by_los(
     x_ifov = x_fov / width
 
     cmin, cmax, w = _get_min_max_ra_dec(
-        height, width, y_ifov, x_ifov, ra, dec, rot, pad_mult, origin,
+        height,
+        width,
+        y_ifov,
+        x_ifov,
+        ra,
+        dec,
+        rot,
+        pad_mult,
+        origin,
     )
 
     cmin_rad = np.radians(cmin)
     cmax_rad = np.radians(cmax)
     stars = query_by_min_max(
-        cmin_rad[0], cmax_rad[0], cmin_rad[1], cmax_rad[1],
-        rootPath, filter_center=filter_center,
+        cmin_rad[0],
+        cmax_rad[0],
+        cmin_rad[1],
+        cmax_rad[1],
+        rootPath,
+        filter_center=filter_center,
     )
 
     rra = np.array([s["ra"] for s in stars])

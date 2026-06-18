@@ -2,18 +2,18 @@
 
 Speed-optimized differentiable satellite scene simulator.
 
-A from-scratch reimplementation of [satsim](../satsim/) built for two use cases:
+A from-scratch, GPU-first satellite scene simulator built for two use cases:
 
 1. **In-the-loop rendering** inside neural network training (differentiable, GPU-first)
 2. **Fast batch generation** of training datasets
 
 ## How it works
 
-satsim renders by oversampling 3-5x, scattering point sources, FFT-convolving the full image with a PSF, then downsampling. This is high-fidelity but slow.
+Conventional high-fidelity simulators render by oversampling 3-5x, scattering point sources, FFT-convolving the full image with a PSF, then downsampling. This is accurate but slow.
 
 sdasim replaces that with **analytical Gaussian splatting**: for each source, directly compute its Gaussian PSF footprint on nearby pixels and accumulate. On a typical 512x512 scene with 1000 stars:
 
-- satsim: O(1536x1536 x log(1536^2)) ~ **94M ops** for the PSF step
+- FFT-convolution baseline: O(1536x1536 x log(1536^2)) ~ **94M ops** for the PSF step
 - sdasim: O(1000 x 11x11) ~ **121K ops**, fully parallel on GPU
 
 Motion blur is handled by expanding each source into K sub-sources along its trajectory (vectorized, no Python loops), then splatting all at once.
@@ -30,7 +30,9 @@ pip install -e ".[dev]"
 
 **Required dependencies (3 total):** `torch>=2.2`, `numpy>=1.26`, `pyyaml>=6.0`
 
-**Optional:** `astropy` (SSTR7/Gaia catalogs, FITS output), `satsim` (config converter)
+**Optional:** `astropy` (SSTR7/Gaia catalogs, FITS output), `satsim` (config converter),
+`[calibrate]` extra = `astropy`+`scipy`+`matplotlib` (empirical-mode calibration; see
+[Empirical rendering](#empirical-data-calibrated-rendering--for-sim-to-real-pretraining))
 
 ## Quick start
 
@@ -72,6 +74,91 @@ for epoch in range(100):
 scene = sdasim.Scene.from_satsim("path/to/satsim_config.json", seed=42)
 images, annotations = scene.render_sequence()
 ```
+
+## Empirical (data-calibrated) rendering — for sim-to-real pretraining
+
+The default path renders Gaussian PSFs with parametric noise. **Empirical mode** instead
+calibrates the forward model from *real paired collects* (sidereal point-PSF frames + rate
+streak frames) so generated streaks carry the instrument's real PSF wings, noise, and
+atmospheric streak texture. The goal is **pretraining a streak detector** (e.g. starcsp)
+without the sim-to-real gap. It is fully **opt-in** (`psf_model="empirical"`,
+`noise_model="empirical"`); the default Gaussian/basic path is unchanged.
+
+What gets calibrated:
+
+- **PSF** — the measured mean PSF (real diffraction wings), warpable by a size/ellipticity
+  distribution sampled from the data (and extrapolatable past it for diversity).
+- **Noise** — gain, white floor (with per-frame sky-brightness variation), background
+  gradient, hot-pixel rate. (The noise measured white, so no correlated-noise generator.)
+- **Streak texture** — four broadband atmospheric components, tuned to the measured 2D
+  texture power spectrum (open-band silicon → fine speckle is chromatically washed out, so
+  the texture is low-order/broadband):
+  - *scintillation* — along-track intensity flicker
+  - *tip/tilt* — 2D position wander
+  - *seeing-breathing* — symmetric PSF size pulse (no one-sided edge artifacts)
+  - *hf-plateau* — post-PSF, band-limited "whispy" texture filling the 3–9 px band the PSF
+    would otherwise erase
+  …with a **flux floor** so texture dims but never guts the streak core.
+
+### Install (adds astropy/scipy/matplotlib for the offline calibration step)
+
+```bash
+uv sync --extra calibrate          # torch + astropy + scipy + matplotlib
+```
+
+### 1. Calibrate (offline): real reductions → bases + config
+
+```bash
+python -m sdasim.calibrate <senpai_reduction_dir> -o calib --gain 0.022 --plots
+```
+
+`<senpai_reduction_dir>` is per-collect senpai outputs (`frame_*_*.json` + `*_processed.fits`).
+`--gain` is the detector gain in e-/ADU (e.g. from `senpai.cli.measure_gain`). Writes into
+`calib/`: `psf_basis.npz`, `noise_model.json`, `streak_model.json`, `calibration.yaml`, and
+(with `--plots`) `param_distributions.png` + `streak_pairs.png` (real-vs-sim snapshots).
+
+### 2. Generate training data (matched + slightly extended past measured)
+
+```python
+import sdasim
+from sdasim.sampler import SceneDistribution, random_scene
+from sdasim.batch import render_scene_batch
+
+dist = SceneDistribution.from_calibration("calib", extend=1.3)   # extend>1 reaches past real
+scenes = [sdasim.Scene(random_scene(dist, seed=k)) for k in range(64)]
+batch = render_scene_batch(scenes)        # (64, H, W) empirical, GPU, per-scene reproducible
+
+# …or a single labeled frame straight from the generated config:
+img, meta = sdasim.Scene.from_yaml("calib/calibration.yaml").render(0)
+```
+
+Streak **orientation is sampled uniform [0, 180)** (the full rotation — a streak at θ and
+θ+180 are identical) rather than the campaign's measured angles; rate/length and per-streak
+texture amplitudes are drawn from the measured distributions, widened by `extend`.
+
+### 3. Visualize (sanity-check realism)
+
+```bash
+python -m sdasim.streak_vis <senpai_reduction_dir> calib -o streaks.mp4 --n 60
+```
+
+Side-by-side **real | empirical | gaussian** matched-streak video (or `--contact sheet.png`
+for a static grid). MP4 if `ffmpeg` is present, else GIF.
+
+### Does it actually help? (the test that matters)
+
+The model is tuned to *look* right, but the arbiter is the **A/B transfer test**: pretrain
+the streak detector on empirical vs gaussian vs ImageNet-init data and compare downstream
+detection metrics. Plain Gaussian sdasim did not help pretraining in earlier experiments;
+the empirical texture model exists to close that gap — verify it on your data.
+
+### Notes
+
+- The calibration step is numpy/scipy/astropy (no torch needed); the render step is torch.
+  The `[calibrate]` extra installs both, so one env runs everything.
+- Console scripts (after install): `sdasim-calibrate`, `sdasim-streak-vis`.
+- Texture knobs live in `streak_model.json` as `tex_*` (scint/tiptilt/seeing/hf rms, the hf
+  band + slope, and `tex_floor_frac`); edit there to retune without recalibrating.
 
 ## Example configs
 
@@ -168,24 +255,31 @@ Noise models preserve gradients:
 src/sdasim/
   splat.py       # Gaussian splatting kernel (core hot path)
   render.py      # Full pipeline: splat + noise + A/D + expand_motion()
-  scene.py       # Scene class: slow setup -> fast render
+  scene.py       # Scene class: slow setup -> fast render (default + empirical dispatch)
   config.py      # Flat dataclasses + YAML loader
   noise.py       # Differentiable Poisson (STE) + Gaussian (reparam)
   fpa.py         # A/D, mv<->pe, eod_to_sigma
   stars.py       # Star catalogs: random bins, SSTR7, Gaia
   targets.py     # Target trajectories
+  sampler.py     # Random scene generation (+ SceneDistribution.from_calibration)
+  batch.py       # Batched multi-scene rendering (Gaussian fused + empirical)
   device.py      # GPU-first device management
   io.py          # Optional FITS/JSON writers
   _compat.py     # satsim config converter
+  # --- empirical (data-calibrated) mode ---
+  empirical.py   # measured PSF + noise + 4-component streak texture renderer
+  calibrate.py   # CLI: real reductions -> psf_basis/noise/streak bases + config + plots
+  streak_vis.py  # real-vs-empirical-vs-gaussian matched video / contact sheet
 ```
 
 ## Tests
 
 ```bash
-uv run pytest              # 71 tests, <1s
+uv run pytest              # 102 tests, ~1-3s
 uv run pytest -v           # verbose
 uv run pytest -k splat     # just splatting tests
 uv run pytest -k gradient  # gradient flow tests
+uv run pytest -k empirical # empirical PSF/noise/streak-texture tests
 ```
 
 ## License

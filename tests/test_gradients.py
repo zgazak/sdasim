@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import torch
-import pytest
 
 from sdasim.render import render_frame
 from sdasim.splat import splat_gaussians
@@ -19,6 +18,7 @@ class TestGradientFlow:
 
         # Test directly through splat (A/D floor kills gradients through render_frame)
         from sdasim.splat import splat_gaussians
+
         img = splat_gaussians(32, 32, star_pos, star_int, sigma=1.5)
         loss = img.sum()
         loss.backward()
@@ -32,12 +32,24 @@ class TestGradientFlow:
         sigma = torch.tensor(1.5, requires_grad=True)
 
         digital, _, _ = render_frame(
-            32, 32, star_pos, star_int,
-            torch.zeros(0, 2), torch.zeros(0),
-            psf_sigma=sigma, background_pe=0.0, dark_current_pe=0.0,
-            bias_pe=0.0, read_noise=0.0, electronic_noise=0.0,
-            gain=1.0, fwc=1e9, a2d_bias=0.0, a2d_dtype="uint16",
-            enable_shot_noise=False, enable_read_noise=False,
+            32,
+            32,
+            star_pos,
+            star_int,
+            torch.zeros(0, 2),
+            torch.zeros(0),
+            psf_sigma=sigma,
+            background_pe=0.0,
+            dark_current_pe=0.0,
+            bias_pe=0.0,
+            read_noise=0.0,
+            electronic_noise=0.0,
+            gain=1.0,
+            fwc=1e9,
+            a2d_bias=0.0,
+            a2d_dtype="uint16",
+            enable_shot_noise=False,
+            enable_read_noise=False,
         )
         # Peak value depends on sigma
         loss = digital.max()
@@ -50,12 +62,24 @@ class TestGradientFlow:
         star_int = torch.tensor([1000.0])
 
         digital, _, _ = render_frame(
-            32, 32, star_pos, star_int,
-            torch.zeros(0, 2), torch.zeros(0),
-            psf_sigma=1.5, background_pe=0.0, dark_current_pe=0.0,
-            bias_pe=0.0, read_noise=0.0, electronic_noise=0.0,
-            gain=1.0, fwc=1e9, a2d_bias=0.0, a2d_dtype="uint16",
-            enable_shot_noise=False, enable_read_noise=False,
+            32,
+            32,
+            star_pos,
+            star_int,
+            torch.zeros(0, 2),
+            torch.zeros(0),
+            psf_sigma=1.5,
+            background_pe=0.0,
+            dark_current_pe=0.0,
+            bias_pe=0.0,
+            read_noise=0.0,
+            electronic_noise=0.0,
+            gain=1.0,
+            fwc=1e9,
+            a2d_bias=0.0,
+            a2d_dtype="uint16",
+            enable_shot_noise=False,
+            enable_read_noise=False,
         )
         # Use a specific pixel value that's off-center
         loss = digital[14, 16]
@@ -68,12 +92,24 @@ class TestGradientFlow:
         star_pos = torch.tensor([[16.0, 16.0]])
 
         digital, _, _ = render_frame(
-            32, 32, star_pos, star_int,
-            torch.zeros(0, 2), torch.zeros(0),
-            psf_sigma=1.5, background_pe=100.0, dark_current_pe=20.0,
-            bias_pe=50.0, read_noise=0.0, electronic_noise=0.0,
-            gain=1.0, fwc=1e9, a2d_bias=0.0, a2d_dtype="uint16",
-            enable_shot_noise=True, enable_read_noise=False,
+            32,
+            32,
+            star_pos,
+            star_int,
+            torch.zeros(0, 2),
+            torch.zeros(0),
+            psf_sigma=1.5,
+            background_pe=100.0,
+            dark_current_pe=20.0,
+            bias_pe=50.0,
+            read_noise=0.0,
+            electronic_noise=0.0,
+            gain=1.0,
+            fwc=1e9,
+            a2d_bias=0.0,
+            a2d_dtype="uint16",
+            enable_shot_noise=True,
+            enable_read_noise=False,
         )
         loss = digital.sum()
         loss.backward()
@@ -85,12 +121,24 @@ class TestGradientFlow:
         star_pos = torch.tensor([[16.0, 16.0]])
 
         digital, _, _ = render_frame(
-            32, 32, star_pos, star_int,
-            torch.zeros(0, 2), torch.zeros(0),
-            psf_sigma=1.5, background_pe=100.0, dark_current_pe=20.0,
-            bias_pe=50.0, read_noise=10.0, electronic_noise=5.0,
-            gain=8.0, fwc=100000.0, a2d_bias=500.0, a2d_dtype="uint16",
-            enable_shot_noise=True, enable_read_noise=True,
+            32,
+            32,
+            star_pos,
+            star_int,
+            torch.zeros(0, 2),
+            torch.zeros(0),
+            psf_sigma=1.5,
+            background_pe=100.0,
+            dark_current_pe=20.0,
+            bias_pe=50.0,
+            read_noise=10.0,
+            electronic_noise=5.0,
+            gain=8.0,
+            fwc=100000.0,
+            a2d_bias=500.0,
+            a2d_dtype="uint16",
+            enable_shot_noise=True,
+            enable_read_noise=True,
         )
         loss = digital.sum()
         loss.backward()

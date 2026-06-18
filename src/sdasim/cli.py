@@ -65,7 +65,9 @@ def cmd_generate(args: argparse.Namespace) -> None:
 
         scene_dir = out / f"scene_{i:04d}"
         n = cfg.sensor.num_frames
-        mode_label = cfg.mode or ("sidereal" if cfg.star_motion.translation == [0.0, 0.0] else "rate_track")
+        mode_label = cfg.mode or (
+            "sidereal" if cfg.star_motion.translation == [0.0, 0.0] else "rate_track"
+        )
 
         if i == 0 or (i + 1) % 10 == 0 or i == args.num_scenes - 1:
             print(
@@ -84,6 +86,7 @@ def cmd_generate(args: argparse.Namespace) -> None:
 def cmd_bench(args: argparse.Namespace) -> None:
     """Benchmark rendering throughput (no disk I/O)."""
     import torch
+
     import sdasim
 
     if args.config:
@@ -127,6 +130,7 @@ def cmd_bench(args: argparse.Namespace) -> None:
 
     if scene.device.type == "cuda":
         import torch
+
         torch.cuda.synchronize()
 
     t0 = time.perf_counter()
@@ -171,26 +175,49 @@ def main(argv: list[str] | None = None) -> None:
     # render
     p_render = sub.add_parser("render", help="Render a sequence and write to disk")
     p_render.add_argument("config", help="Path to YAML config file")
-    p_render.add_argument("-o", "--output", default="output", help="Output directory (default: output)")
-    p_render.add_argument("-n", "--frames", type=int, default=None, help="Number of frames (default: from config)")
-    p_render.add_argument("--fmt", default="npy", choices=["npy", "fits"], help="Output format (default: npy)")
+    p_render.add_argument(
+        "-o", "--output", default="output", help="Output directory (default: output)"
+    )
+    p_render.add_argument(
+        "-n", "--frames", type=int, default=None, help="Number of frames (default: from config)"
+    )
+    p_render.add_argument(
+        "--fmt", default="npy", choices=["npy", "fits"], help="Output format (default: npy)"
+    )
 
     # generate
     p_gen = sub.add_parser("generate", help="Generate random pretraining scenes")
-    p_gen.add_argument("-n", "--num-scenes", type=int, default=100, help="Number of scenes (default: 100)")
+    p_gen.add_argument(
+        "-n", "--num-scenes", type=int, default=100, help="Number of scenes (default: 100)"
+    )
     p_gen.add_argument("--seed", type=int, default=None, help="Base random seed")
     p_gen.add_argument("-o", "--output", default="output/pretrain", help="Output directory")
-    p_gen.add_argument("--fmt", default="npy", choices=["npy", "fits"], help="Output format (default: npy)")
+    p_gen.add_argument(
+        "--fmt", default="npy", choices=["npy", "fits"], help="Output format (default: npy)"
+    )
     p_gen.add_argument("--height", type=int, default=256, help="Image height (default: 256)")
     p_gen.add_argument("--width", type=int, default=256, help="Image width (default: 256)")
-    p_gen.add_argument("--frames-per-scene", type=int, default=8, help="Frames per scene (default: 8)")
+    p_gen.add_argument(
+        "--frames-per-scene", type=int, default=8, help="Frames per scene (default: 8)"
+    )
     p_gen.add_argument("--device", default="auto", help="Device (default: auto)")
     p_gen.add_argument("--no-noise", action="store_true", help="Disable shot and read noise")
 
     # bench
     p_bench = sub.add_parser("bench", help="Benchmark rendering throughput (no disk I/O)")
-    p_bench.add_argument("config", nargs="?", default=None, help="Path to YAML config (optional, uses built-in default)")
-    p_bench.add_argument("-n", "--frames", type=int, default=None, help="Number of frames (default: from config or 100)")
+    p_bench.add_argument(
+        "config",
+        nargs="?",
+        default=None,
+        help="Path to YAML config (optional, uses built-in default)",
+    )
+    p_bench.add_argument(
+        "-n",
+        "--frames",
+        type=int,
+        default=None,
+        help="Number of frames (default: from config or 100)",
+    )
     p_bench.add_argument("--grad", action="store_true", help="Also benchmark with backward pass")
 
     args = parser.parse_args(argv)

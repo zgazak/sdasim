@@ -11,9 +11,9 @@ import math
 import torch
 from torch import Tensor
 
-from sdasim.splat import splat_gaussians
-from sdasim.noise import poisson_noise, gaussian_noise
 from sdasim.fpa import analog_to_digital
+from sdasim.noise import gaussian_noise, poisson_noise
+from sdasim.splat import splat_gaussians
 
 
 def expand_motion(
@@ -156,22 +156,30 @@ def render_frame(
     Returns:
         (digital, star_signal, target_signal): Digital image, star-only PE, target-only PE.
     """
-    device = star_positions.device
     center = (height / 2.0, width / 2.0)
 
     # --- Stars: within-frame motion blur ---
-    has_star_motion = (
-        star_rotation != 0.0
-        or (star_velocity is not None and any(v != 0.0 for v in (
-            star_velocity if isinstance(star_velocity, (list, tuple))
-            else star_velocity.tolist()
-        )))
+    has_star_motion = star_rotation != 0.0 or (
+        star_velocity is not None
+        and any(
+            v != 0.0
+            for v in (
+                star_velocity
+                if isinstance(star_velocity, (list, tuple))
+                else star_velocity.tolist()
+            )
+        )
     )
     if has_star_motion and t_osf > 1 and star_positions.shape[0] > 0:
         exp_pos, exp_int = expand_motion(
-            star_positions, star_intensities,
-            star_velocity, star_rotation,
-            0.0, exposure, t_osf, center,
+            star_positions,
+            star_intensities,
+            star_velocity,
+            star_rotation,
+            0.0,
+            exposure,
+            t_osf,
+            center,
         )
     else:
         exp_pos, exp_int = star_positions, star_intensities
@@ -187,18 +195,31 @@ def render_frame(
         streak_px = max_speed * exposure
         tgt_osf = max(1, int(streak_px * 2))  # 2 sub-steps per pixel for quality
 
-    if (target_velocities is not None and tgt_osf is not None and tgt_osf > 1
-            and target_positions.shape[0] > 0):
+    if (
+        target_velocities is not None
+        and tgt_osf is not None
+        and tgt_osf > 1
+        and target_positions.shape[0] > 0
+    ):
         # Per-target velocities — expand_motion handles (N, 2) velocity
         tgt_exp_pos, tgt_exp_int = expand_motion(
-            target_positions, target_intensities,
-            target_velocities, 0.0,
-            0.0, exposure, tgt_osf, center,
+            target_positions,
+            target_intensities,
+            target_velocities,
+            0.0,
+            0.0,
+            exposure,
+            tgt_osf,
+            center,
         )
         target_signal = splat_gaussians(height, width, tgt_exp_pos, tgt_exp_int, psf_sigma)
     else:
         target_signal = splat_gaussians(
-            height, width, target_positions, target_intensities, psf_sigma,
+            height,
+            width,
+            target_positions,
+            target_intensities,
+            psf_sigma,
         )
 
     # Combine signal

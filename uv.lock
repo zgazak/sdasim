@@ -2,10 +2,10 @@ version = 1
 revision = 3
 requires-python = ">=3.10"
 resolution-markers = [
-    "python_full_version >= '3.13' and extra != 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat' and extra != 'extra-6-sdasim-fits'",
-    "python_full_version == '3.12.*' and extra != 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat' and extra != 'extra-6-sdasim-fits'",
-    "python_full_version == '3.11.*' and extra != 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat' and extra != 'extra-6-sdasim-fits'",
-    "python_full_version < '3.11' and extra != 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat' and extra != 'extra-6-sdasim-fits'",
+    "python_full_version >= '3.13' and extra != 'extra-6-sdasim-calibrate' and extra != 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat' and extra != 'extra-6-sdasim-fits'",
+    "python_full_version == '3.12.*' and extra != 'extra-6-sdasim-calibrate' and extra != 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat' and extra != 'extra-6-sdasim-fits'",
+    "python_full_version == '3.11.*' and extra != 'extra-6-sdasim-calibrate' and extra != 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat' and extra != 'extra-6-sdasim-fits'",
+    "python_full_version < '3.11' and extra != 'extra-6-sdasim-calibrate' and extra != 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat' and extra != 'extra-6-sdasim-fits'",
     "python_full_version >= '3.12' and extra == 'extra-6-sdasim-catalogs' and extra != 'extra-6-sdasim-compat'",
     "python_full_version == '3.11.*' and extra == 'extra-6-sdasim-catalogs' and extra != 'extra-6-sdasim-compat'",
     "python_full_version < '3.11' and extra == 'extra-6-sdasim-catalogs' and extra != 'extra-6-sdasim-compat'",
@@ -19,6 +19,9 @@ conflicts = [[
 ], [
     { package = "sdasim", extra = "compat" },
     { package = "sdasim", extra = "fits" },
+], [
+    { package = "sdasim", extra = "calibrate" },
+    { package = "sdasim", extra = "compat" },
 ]]
 
 [[package]]
@@ -51,8 +54,8 @@ dependencies = [
     { name = "importlib-metadata" },
     { name = "jmespath" },
     { name = "jsonschema" },
-    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
-    { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
     { name = "packaging" },
     { name = "pyyaml" },
     { name = "semantic-version" },
@@ -103,8 +106,8 @@ resolution-markers = [
     "python_full_version < '3.11'",
 ]
 dependencies = [
-    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
-    { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
     { name = "packaging" },
     { name = "pyerfa" },
     { name = "pyyaml" },
@@ -425,9 +428,13 @@ name = "contourpy"
 version = "1.3.3"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
-    "python_full_version >= '3.13'",
-    "python_full_version == '3.12.*'",
-    "python_full_version == '3.11.*'",
+    "python_full_version >= '3.13' and extra != 'extra-6-sdasim-calibrate' and extra != 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat' and extra != 'extra-6-sdasim-fits'",
+    "python_full_version == '3.12.*' and extra != 'extra-6-sdasim-calibrate' and extra != 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat' and extra != 'extra-6-sdasim-fits'",
+    "python_full_version == '3.11.*' and extra != 'extra-6-sdasim-calibrate' and extra != 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat' and extra != 'extra-6-sdasim-fits'",
+    "python_full_version >= '3.12' and extra == 'extra-6-sdasim-catalogs' and extra != 'extra-6-sdasim-compat'",
+    "python_full_version == '3.11.*' and extra == 'extra-6-sdasim-catalogs' and extra != 'extra-6-sdasim-compat'",
+    "python_full_version >= '3.12' and extra != 'extra-6-sdasim-catalogs' and extra != 'extra-6-sdasim-compat'",
+    "python_full_version == '3.11.*' and extra != 'extra-6-sdasim-catalogs' and extra != 'extra-6-sdasim-compat'",
 ]
 dependencies = [
     { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
@@ -621,7 +628,7 @@ name = "exceptiongroup"
 version = "1.3.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "typing-extensions", marker = "python_full_version < '3.11' or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "typing-extensions", marker = "python_full_version < '3.11' or (extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/50/79/66800aadf48771f6b62f7eb014e352e5d06856655206165d775e675a02c9/exceptiongroup-1.3.1.tar.gz", hash = "sha256:8b412432c6055b0b7d14c310000ae93352ed6754f70fa8f7c34141f91c4e3219", size = 30371, upload-time = "2025-11-21T23:01:54.787Z" }
 wheels = [
@@ -798,8 +805,8 @@ name = "h5py"
 version = "3.15.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
-    { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/4d/6a/0d79de0b025aa85dc8864de8e97659c94cf3d23148394a954dc5ca52f8c8/h5py-3.15.1.tar.gz", hash = "sha256:c86e3ed45c4473564de55aa83b6fc9e5ead86578773dfbd93047380042e26b69", size = 426236, upload-time = "2025-10-16T10:35:27.404Z" }
 wheels = [
@@ -912,13 +919,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/81/af/f03fa2a60617a46814fea5523f8d53a703aabbb316e029b21efe8fe04f9f/imagecodecs-2026.1.14-cp311-abi3-win32.whl", hash = "sha256:6bbf7defac9f71e0401305440f7e94160201789e03ee75e6e5709bc904742429", size = 17224233, upload-time = "2026-01-14T04:23:58.261Z" },
     { url = "https://files.pythonhosted.org/packages/b6/22/ae01473653dbad9e10a1632b5d8ae6473de0f3ec2b82c912836661d501a9/imagecodecs-2026.1.14-cp311-abi3-win_amd64.whl", hash = "sha256:13ec4659d05010aa072644f100d0e1e1fcc61d7eaa960923b8216272682e6c9a", size = 21544843, upload-time = "2026-01-14T04:24:02.387Z" },
     { url = "https://files.pythonhosted.org/packages/54/6e/86fa1a07aee2ea39acfa04e372a144a72b4cdc80f40a11a3ee312c12d312/imagecodecs-2026.1.14-cp311-abi3-win_arm64.whl", hash = "sha256:2a6102f3b99c66e090a619f8a0204e6e95c01399854ffa09e4a9de476dc1671a", size = 16893409, upload-time = "2026-01-14T04:24:05.764Z" },
-    { url = "https://files.pythonhosted.org/packages/4e/a3/f92989c2de762ee4db9f5454bbafa540cfa13d28006b4aeb01936f9a4a8a/imagecodecs-2026.1.14-cp314-cp314t-macosx_10_15_x86_64.whl", hash = "sha256:455915b32ae1ecccaeb9dad32ad1499aa2e6928b6b853e3635cb32af9aa56857", size = 13202548, upload-time = "2026-01-14T04:24:08.515Z" },
-    { url = "https://files.pythonhosted.org/packages/bb/da/9fb0e446f5af6fa21f44a1f1d4950e538345d7e8931b5983a543a24b9c38/imagecodecs-2026.1.14-cp314-cp314t-macosx_11_0_arm64.whl", hash = "sha256:c189f5d842f1f2524c27c307220c5f2cf201af44dab74b1f7476645f72eb2e87", size = 11004937, upload-time = "2026-01-14T04:24:11.054Z" },
-    { url = "https://files.pythonhosted.org/packages/e1/e9/0400722f5bdaaa9bc13ad77c78606cfb767f2b609cb136cc81d81c380807/imagecodecs-2026.1.14-cp314-cp314t-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:ca3325e68dffeb29383f4a28957ac61d3c0ade1b244ebf70797bdaf009ad1578", size = 27442756, upload-time = "2026-01-14T04:24:15.247Z" },
-    { url = "https://files.pythonhosted.org/packages/6e/f1/f39cacf55d5e7175f1e7b5222178e7c56d6ca1a49e61011adb1150d85aec/imagecodecs-2026.1.14-cp314-cp314t-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:a6819b8365cf28e2a85dcb04fb9c1f1acb63cf5da61495910cd751a7e2548e1d", size = 28006255, upload-time = "2026-01-14T04:24:19.458Z" },
-    { url = "https://files.pythonhosted.org/packages/ad/58/b098490e93435ef4311c473e30588e80f966f6d676f1343804f8ab3fcff1/imagecodecs-2026.1.14-cp314-cp314t-win32.whl", hash = "sha256:ae422def59fab163ba0cb79470e10aa64b8a62b29e74d50ecd0edab4349444c2", size = 17909361, upload-time = "2026-01-14T04:24:22.548Z" },
-    { url = "https://files.pythonhosted.org/packages/b3/35/cb1fc0ce35dd61475672af65607fe2c3cc30d7844d617067a3e649b8366e/imagecodecs-2026.1.14-cp314-cp314t-win_amd64.whl", hash = "sha256:9b11ced125e7b8da2a9d1a30505827cdb27f7023ccee4cd4cc5e3b352dce8574", size = 22496362, upload-time = "2026-01-14T04:24:25.874Z" },
-    { url = "https://files.pythonhosted.org/packages/04/f7/2dfe80928bf0c6c6e7411954fa008a71d0b08e72fe1028fe9a8a8116588a/imagecodecs-2026.1.14-cp314-cp314t-win_arm64.whl", hash = "sha256:d4c19df6142481d2fda62d91542c078aecd647f120da52cc79019ed6938e587d", size = 17534288, upload-time = "2026-01-14T04:24:28.911Z" },
 ]
 
 [[package]]
@@ -926,8 +926,8 @@ name = "imageio"
 version = "2.37.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
-    { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
     { name = "pillow" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/a3/6f/606be632e37bf8d05b253e8626c2291d74c691ddc7bcdf7d6aaf33b32f6a/imageio-2.37.2.tar.gz", hash = "sha256:0212ef2727ac9caa5ca4b2c75ae89454312f440a756fcfc8ef1993e718f50f8a", size = 389600, upload-time = "2025-11-04T14:29:39.898Z" }
@@ -982,8 +982,8 @@ name = "jplephem"
 version = "2.24"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
-    { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/90/8b/a50514f000fcd0207cd281370b0db66e7712a5db9f96b77a0301a7205f96/jplephem-2.24.tar.gz", hash = "sha256:354fe1adae022264ab46f18afb6af26211277cfd7b3ef90400755fcabe93bc11", size = 45289, upload-time = "2026-01-23T21:03:01.07Z" }
 wheels = [
@@ -1339,13 +1339,13 @@ name = "matplotlib"
 version = "3.10.8"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "contourpy", version = "1.3.2", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
-    { name = "contourpy", version = "1.3.3", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "contourpy", version = "1.3.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11' or (extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "contourpy", version = "1.3.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11' or (extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
     { name = "cycler" },
     { name = "fonttools" },
     { name = "kiwisolver" },
-    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
-    { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11' or (extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11' or (extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
     { name = "packaging" },
     { name = "pillow" },
     { name = "pyparsing" },
@@ -1423,8 +1423,8 @@ name = "ml-dtypes"
 version = "0.5.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
-    { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/0e/4a/c27b42ed9b1c7d13d9ba8b6905dece787d6259152f2309338aed29b2447b/ml_dtypes-0.5.4.tar.gz", hash = "sha256:8ab06a50fb9bf9666dd0fe5dfb4676fa2b0ac0f31ecff72a6c3af8e22c063453", size = 692314, upload-time = "2025-11-17T22:32:31.031Z" }
 wheels = [
@@ -1499,9 +1499,9 @@ name = "networkx"
 version = "3.6.1"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
-    "python_full_version >= '3.13' and extra != 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat' and extra != 'extra-6-sdasim-fits'",
-    "python_full_version == '3.12.*' and extra != 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat' and extra != 'extra-6-sdasim-fits'",
-    "python_full_version == '3.11.*' and extra != 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat' and extra != 'extra-6-sdasim-fits'",
+    "python_full_version >= '3.13' and extra != 'extra-6-sdasim-calibrate' and extra != 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat' and extra != 'extra-6-sdasim-fits'",
+    "python_full_version == '3.12.*' and extra != 'extra-6-sdasim-calibrate' and extra != 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat' and extra != 'extra-6-sdasim-fits'",
+    "python_full_version == '3.11.*' and extra != 'extra-6-sdasim-calibrate' and extra != 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat' and extra != 'extra-6-sdasim-fits'",
     "python_full_version >= '3.12' and extra == 'extra-6-sdasim-catalogs' and extra != 'extra-6-sdasim-compat'",
     "python_full_version == '3.11.*' and extra == 'extra-6-sdasim-catalogs' and extra != 'extra-6-sdasim-compat'",
     "python_full_version >= '3.12' and extra != 'extra-6-sdasim-catalogs' and extra != 'extra-6-sdasim-compat'",
@@ -1518,8 +1518,8 @@ version = "0.64.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "llvmlite" },
-    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
-    { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/23/c9/a0fb41787d01d621046138da30f6c2100d80857bf34b3390dd68040f27a3/numba-0.64.0.tar.gz", hash = "sha256:95e7300af648baa3308127b1955b52ce6d11889d16e8cfe637b4f85d2fca52b1", size = 2765679, upload-time = "2026-02-18T18:41:20.974Z" }
 wheels = [
@@ -1550,8 +1550,8 @@ name = "numexpr"
 version = "2.14.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
-    { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/cb/2f/fdba158c9dbe5caca9c3eca3eaffffb251f2fb8674bf8e2d0aed5f38d319/numexpr-2.14.1.tar.gz", hash = "sha256:4be00b1086c7b7a5c32e31558122b7b80243fe098579b170967da83f3152b48b", size = 119400, upload-time = "2025-10-13T16:17:27.351Z" }
 wheels = [
@@ -1683,9 +1683,9 @@ name = "numpy"
 version = "2.4.2"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
-    "python_full_version >= '3.13' and extra != 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat' and extra != 'extra-6-sdasim-fits'",
-    "python_full_version == '3.12.*' and extra != 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat' and extra != 'extra-6-sdasim-fits'",
-    "python_full_version == '3.11.*' and extra != 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat' and extra != 'extra-6-sdasim-fits'",
+    "python_full_version >= '3.13' and extra != 'extra-6-sdasim-calibrate' and extra != 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat' and extra != 'extra-6-sdasim-fits'",
+    "python_full_version == '3.12.*' and extra != 'extra-6-sdasim-calibrate' and extra != 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat' and extra != 'extra-6-sdasim-fits'",
+    "python_full_version == '3.11.*' and extra != 'extra-6-sdasim-calibrate' and extra != 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat' and extra != 'extra-6-sdasim-fits'",
     "python_full_version >= '3.12' and extra == 'extra-6-sdasim-catalogs' and extra != 'extra-6-sdasim-compat'",
     "python_full_version == '3.11.*' and extra == 'extra-6-sdasim-catalogs' and extra != 'extra-6-sdasim-compat'",
     "python_full_version >= '3.12' and extra != 'extra-6-sdasim-catalogs' and extra != 'extra-6-sdasim-compat'",
@@ -1890,15 +1890,6 @@ wheels = [
 ]
 
 [[package]]
-name = "nvidia-ml-py"
-version = "13.590.48"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/af/a0/f4fc18cf72f06821a9a665085435b901449986855519d5b3843532db35e9/nvidia_ml_py-13.590.48.tar.gz", hash = "sha256:8184d1be52914ac7f0991cd1c0d946c65dc88a840c754cd12c274b77b88760dd", size = 49732, upload-time = "2026-01-22T01:14:56.456Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/fd/72/fb2af0d259a651affdce65fd6a495f0e07a685a0136baf585c5065204ee7/nvidia_ml_py-13.590.48-py3-none-any.whl", hash = "sha256:fd43d30ee9cd0b7940f5f9f9220b68d42722975e3992b6c21d14144c48760e43", size = 50680, upload-time = "2026-01-22T01:14:55.281Z" },
-]
-
-[[package]]
 name = "nvidia-nccl-cu12"
 version = "2.27.5"
 source = { registry = "https://pypi.org/simple" }
@@ -1937,27 +1928,12 @@ wheels = [
 ]
 
 [[package]]
-name = "nvitop"
-version = "1.6.2"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "colorama", marker = "sys_platform == 'win32' or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
-    { name = "nvidia-ml-py" },
-    { name = "psutil" },
-    { name = "windows-curses", marker = "sys_platform == 'win32' or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/1b/bd/82f3bb53482cd078abc0d618098a2793c7c9caa7f26934051575397414e6/nvitop-1.6.2.tar.gz", hash = "sha256:267b341b66ac3819f116ad11819f4da2e121fe2be1dde979026b6526966211e9", size = 221935, upload-time = "2026-01-27T17:08:25.2Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/f7/c9/3f1fcb72597b51c96ff227d77bcacfb156571219a82f1b2714a853b0098d/nvitop-1.6.2-py3-none-any.whl", hash = "sha256:f3b8a0f4062108a953f5fbdd6042acd2041550d0b62d290b7e1d5c4e68d9a659", size = 215479, upload-time = "2026-01-27T17:08:22.721Z" },
-]
-
-[[package]]
 name = "opensimplex"
 version = "0.4.5.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
-    { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/bf/9a/c7f680b75033b7251622e86ae254d4815c799b86ba8e4b0b443e35f6b996/opensimplex-0.4.5.1.tar.gz", hash = "sha256:881163ba74b443c1498d43b4e6567635a57171e43174db1e41901580b859145d", size = 271337, upload-time = "2024-05-01T13:53:35.19Z" }
 wheels = [
@@ -2218,10 +2194,10 @@ dependencies = [
     { name = "astropy", version = "5.3.2", source = { registry = "https://pypi.org/simple" } },
     { name = "matplotlib" },
     { name = "numexpr" },
-    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
-    { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
-    { name = "scipy", version = "1.15.3", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
-    { name = "scipy", version = "1.17.1", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "scipy", version = "1.15.3", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "scipy", version = "1.17.1", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/5c/9e/c609687e8697123860139ede7552c9155749ae5da4ac8794d69eba049e06/poppy-1.1.2.tar.gz", hash = "sha256:d8bdee1fb01d0048ffcfa0f43102ab9dc46dbba7a26da5206661d147736a7657", size = 16509450, upload-time = "2025-01-14T15:23:13.81Z" }
 wheels = [
@@ -2244,34 +2220,6 @@ wheels = [
 ]
 
 [[package]]
-name = "psutil"
-version = "7.2.2"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/aa/c6/d1ddf4abb55e93cebc4f2ed8b5d6dbad109ecb8d63748dd2b20ab5e57ebe/psutil-7.2.2.tar.gz", hash = "sha256:0746f5f8d406af344fd547f1c8daa5f5c33dbc293bb8d6a16d80b4bb88f59372", size = 493740, upload-time = "2026-01-28T18:14:54.428Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/51/08/510cbdb69c25a96f4ae523f733cdc963ae654904e8db864c07585ef99875/psutil-7.2.2-cp313-cp313t-macosx_10_13_x86_64.whl", hash = "sha256:2edccc433cbfa046b980b0df0171cd25bcaeb3a68fe9022db0979e7aa74a826b", size = 130595, upload-time = "2026-01-28T18:14:57.293Z" },
-    { url = "https://files.pythonhosted.org/packages/d6/f5/97baea3fe7a5a9af7436301f85490905379b1c6f2dd51fe3ecf24b4c5fbf/psutil-7.2.2-cp313-cp313t-macosx_11_0_arm64.whl", hash = "sha256:e78c8603dcd9a04c7364f1a3e670cea95d51ee865e4efb3556a3a63adef958ea", size = 131082, upload-time = "2026-01-28T18:14:59.732Z" },
-    { url = "https://files.pythonhosted.org/packages/37/d6/246513fbf9fa174af531f28412297dd05241d97a75911ac8febefa1a53c6/psutil-7.2.2-cp313-cp313t-manylinux2010_x86_64.manylinux_2_12_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:1a571f2330c966c62aeda00dd24620425d4b0cc86881c89861fbc04549e5dc63", size = 181476, upload-time = "2026-01-28T18:15:01.884Z" },
-    { url = "https://files.pythonhosted.org/packages/b8/b5/9182c9af3836cca61696dabe4fd1304e17bc56cb62f17439e1154f225dd3/psutil-7.2.2-cp313-cp313t-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:917e891983ca3c1887b4ef36447b1e0873e70c933afc831c6b6da078ba474312", size = 184062, upload-time = "2026-01-28T18:15:04.436Z" },
-    { url = "https://files.pythonhosted.org/packages/16/ba/0756dca669f5a9300d0cbcbfae9a4c30e446dfc7440ffe43ded5724bfd93/psutil-7.2.2-cp313-cp313t-win_amd64.whl", hash = "sha256:ab486563df44c17f5173621c7b198955bd6b613fb87c71c161f827d3fb149a9b", size = 139893, upload-time = "2026-01-28T18:15:06.378Z" },
-    { url = "https://files.pythonhosted.org/packages/1c/61/8fa0e26f33623b49949346de05ec1ddaad02ed8ba64af45f40a147dbfa97/psutil-7.2.2-cp313-cp313t-win_arm64.whl", hash = "sha256:ae0aefdd8796a7737eccea863f80f81e468a1e4cf14d926bd9b6f5f2d5f90ca9", size = 135589, upload-time = "2026-01-28T18:15:08.03Z" },
-    { url = "https://files.pythonhosted.org/packages/81/69/ef179ab5ca24f32acc1dac0c247fd6a13b501fd5534dbae0e05a1c48b66d/psutil-7.2.2-cp314-cp314t-macosx_10_15_x86_64.whl", hash = "sha256:eed63d3b4d62449571547b60578c5b2c4bcccc5387148db46e0c2313dad0ee00", size = 130664, upload-time = "2026-01-28T18:15:09.469Z" },
-    { url = "https://files.pythonhosted.org/packages/7b/64/665248b557a236d3fa9efc378d60d95ef56dd0a490c2cd37dafc7660d4a9/psutil-7.2.2-cp314-cp314t-macosx_11_0_arm64.whl", hash = "sha256:7b6d09433a10592ce39b13d7be5a54fbac1d1228ed29abc880fb23df7cb694c9", size = 131087, upload-time = "2026-01-28T18:15:11.724Z" },
-    { url = "https://files.pythonhosted.org/packages/d5/2e/e6782744700d6759ebce3043dcfa661fb61e2fb752b91cdeae9af12c2178/psutil-7.2.2-cp314-cp314t-manylinux2010_x86_64.manylinux_2_12_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:1fa4ecf83bcdf6e6c8f4449aff98eefb5d0604bf88cb883d7da3d8d2d909546a", size = 182383, upload-time = "2026-01-28T18:15:13.445Z" },
-    { url = "https://files.pythonhosted.org/packages/57/49/0a41cefd10cb7505cdc04dab3eacf24c0c2cb158a998b8c7b1d27ee2c1f5/psutil-7.2.2-cp314-cp314t-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:e452c464a02e7dc7822a05d25db4cde564444a67e58539a00f929c51eddda0cf", size = 185210, upload-time = "2026-01-28T18:15:16.002Z" },
-    { url = "https://files.pythonhosted.org/packages/dd/2c/ff9bfb544f283ba5f83ba725a3c5fec6d6b10b8f27ac1dc641c473dc390d/psutil-7.2.2-cp314-cp314t-win_amd64.whl", hash = "sha256:c7663d4e37f13e884d13994247449e9f8f574bc4655d509c3b95e9ec9e2b9dc1", size = 141228, upload-time = "2026-01-28T18:15:18.385Z" },
-    { url = "https://files.pythonhosted.org/packages/f2/fc/f8d9c31db14fcec13748d373e668bc3bed94d9077dbc17fb0eebc073233c/psutil-7.2.2-cp314-cp314t-win_arm64.whl", hash = "sha256:11fe5a4f613759764e79c65cf11ebdf26e33d6dd34336f8a337aa2996d71c841", size = 136284, upload-time = "2026-01-28T18:15:19.912Z" },
-    { url = "https://files.pythonhosted.org/packages/e7/36/5ee6e05c9bd427237b11b3937ad82bb8ad2752d72c6969314590dd0c2f6e/psutil-7.2.2-cp36-abi3-macosx_10_9_x86_64.whl", hash = "sha256:ed0cace939114f62738d808fdcecd4c869222507e266e574799e9c0faa17d486", size = 129090, upload-time = "2026-01-28T18:15:22.168Z" },
-    { url = "https://files.pythonhosted.org/packages/80/c4/f5af4c1ca8c1eeb2e92ccca14ce8effdeec651d5ab6053c589b074eda6e1/psutil-7.2.2-cp36-abi3-macosx_11_0_arm64.whl", hash = "sha256:1a7b04c10f32cc88ab39cbf606e117fd74721c831c98a27dc04578deb0c16979", size = 129859, upload-time = "2026-01-28T18:15:23.795Z" },
-    { url = "https://files.pythonhosted.org/packages/b5/70/5d8df3b09e25bce090399cf48e452d25c935ab72dad19406c77f4e828045/psutil-7.2.2-cp36-abi3-manylinux2010_x86_64.manylinux_2_12_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:076a2d2f923fd4821644f5ba89f059523da90dc9014e85f8e45a5774ca5bc6f9", size = 155560, upload-time = "2026-01-28T18:15:25.976Z" },
-    { url = "https://files.pythonhosted.org/packages/63/65/37648c0c158dc222aba51c089eb3bdfa238e621674dc42d48706e639204f/psutil-7.2.2-cp36-abi3-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:b0726cecd84f9474419d67252add4ac0cd9811b04d61123054b9fb6f57df6e9e", size = 156997, upload-time = "2026-01-28T18:15:27.794Z" },
-    { url = "https://files.pythonhosted.org/packages/8e/13/125093eadae863ce03c6ffdbae9929430d116a246ef69866dad94da3bfbc/psutil-7.2.2-cp36-abi3-musllinux_1_2_aarch64.whl", hash = "sha256:fd04ef36b4a6d599bbdb225dd1d3f51e00105f6d48a28f006da7f9822f2606d8", size = 148972, upload-time = "2026-01-28T18:15:29.342Z" },
-    { url = "https://files.pythonhosted.org/packages/04/78/0acd37ca84ce3ddffaa92ef0f571e073faa6d8ff1f0559ab1272188ea2be/psutil-7.2.2-cp36-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:b58fabe35e80b264a4e3bb23e6b96f9e45a3df7fb7eed419ac0e5947c61e47cc", size = 148266, upload-time = "2026-01-28T18:15:31.597Z" },
-    { url = "https://files.pythonhosted.org/packages/b4/90/e2159492b5426be0c1fef7acba807a03511f97c5f86b3caeda6ad92351a7/psutil-7.2.2-cp37-abi3-win_amd64.whl", hash = "sha256:eb7e81434c8d223ec4a219b5fc1c47d0417b12be7ea866e24fb5ad6e84b3d988", size = 137737, upload-time = "2026-01-28T18:15:33.849Z" },
-    { url = "https://files.pythonhosted.org/packages/8c/c7/7bb2e321574b10df20cbde462a94e2b71d05f9bbda251ef27d104668306a/psutil-7.2.2-cp37-abi3-win_arm64.whl", hash = "sha256:8c233660f575a5a89e6d4cb65d9f938126312bca76d8fe087b947b3a1aaac9ee", size = 134617, upload-time = "2026-01-28T18:15:36.514Z" },
-]
-
-[[package]]
 name = "pydash"
 version = "8.0.6"
 source = { registry = "https://pypi.org/simple" }
@@ -2288,8 +2236,8 @@ name = "pyerfa"
 version = "2.0.1.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11' or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
-    { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11' or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11' or (extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11' or (extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/71/39/63cc8291b0cf324ae710df41527faf7d331bce573899199d926b3e492260/pyerfa-2.0.1.5.tar.gz", hash = "sha256:17d6b24fe4846c65d5e7d8c362dcb08199dc63b30a236aedd73875cc83e1f6c0", size = 818430, upload-time = "2024-11-11T15:22:30.852Z" }
 wheels = [
@@ -2307,10 +2255,10 @@ name = "pygc"
 version = "2.0.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
-    { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
-    { name = "pyproj", version = "3.7.1", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
-    { name = "pyproj", version = "3.7.2", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "pyproj", version = "3.7.1", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "pyproj", version = "3.7.2", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/8d/8b/d22ba05e58b728954c2dff26365d672b544535c8517740e37d3c603f504a/pygc-2.0.0.tar.gz", hash = "sha256:c43130425fb95c049a5fe93dfa007bf0f2dd8a538e1bf699d8e8b05d1f54715e", size = 19779, upload-time = "2024-12-12T20:55:51.227Z" }
 wheels = [
@@ -2456,13 +2404,13 @@ name = "pytest"
 version = "9.0.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "colorama", marker = "sys_platform == 'win32' or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
-    { name = "exceptiongroup", marker = "python_full_version < '3.11' or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "colorama", marker = "sys_platform == 'win32' or (extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "exceptiongroup", marker = "python_full_version < '3.11' or (extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
     { name = "iniconfig" },
     { name = "packaging" },
     { name = "pluggy" },
     { name = "pygments" },
-    { name = "tomli", marker = "python_full_version < '3.11' or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "tomli", marker = "python_full_version < '3.11' or (extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/d1/db/7ef3487e0fb0049ddb5ce41d3a49c235bf9ad299b6a25d5780a89f19230f/pytest-9.0.2.tar.gz", hash = "sha256:75186651a92bd89611d1d9fc20f0b4345fd827c41ccd5c299a868a05d70edf11", size = 1568901, upload-time = "2025-12-06T21:30:51.014Z" }
 wheels = [
@@ -2746,12 +2694,12 @@ dependencies = [
     { name = "cython" },
     { name = "czmlpy" },
     { name = "diskcache" },
-    { name = "imagecodecs", version = "2025.3.30", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
-    { name = "imagecodecs", version = "2026.1.14", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "imagecodecs", version = "2025.3.30", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "imagecodecs", version = "2026.1.14", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
     { name = "matplotlib" },
     { name = "numba" },
-    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
-    { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
     { name = "opensimplex" },
     { name = "pillow" },
     { name = "pooch" },
@@ -2759,15 +2707,15 @@ dependencies = [
     { name = "pydash" },
     { name = "pygc" },
     { name = "pyyaml" },
-    { name = "scikit-image", version = "0.25.2", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
-    { name = "scikit-image", version = "0.26.0", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
-    { name = "scipy", version = "1.15.3", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
-    { name = "scipy", version = "1.17.1", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "scikit-image", version = "0.25.2", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "scikit-image", version = "0.26.0", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "scipy", version = "1.15.3", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "scipy", version = "1.17.1", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
     { name = "sgp4" },
     { name = "skyfield" },
     { name = "tensorflow" },
-    { name = "tifffile", version = "2025.5.10", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
-    { name = "tifffile", version = "2026.2.24", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "tifffile", version = "2025.5.10", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "tifffile", version = "2026.2.24", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/70/a8/1af7a03113b29d2c78632260555211bc64e8f941d27d8b5b8e64ae269248/satsim-0.23.0.tar.gz", hash = "sha256:9b0c82ede040bf51ccfcd4450dfaaaaec0ac8a985c83934a3110ef9d3ff5950f", size = 995910, upload-time = "2026-02-07T06:48:48.403Z" }
 wheels = [
@@ -2951,9 +2899,13 @@ name = "scipy"
 version = "1.17.1"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
-    "python_full_version >= '3.13'",
-    "python_full_version == '3.12.*'",
-    "python_full_version == '3.11.*'",
+    "python_full_version >= '3.13' and extra != 'extra-6-sdasim-calibrate' and extra != 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat' and extra != 'extra-6-sdasim-fits'",
+    "python_full_version == '3.12.*' and extra != 'extra-6-sdasim-calibrate' and extra != 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat' and extra != 'extra-6-sdasim-fits'",
+    "python_full_version == '3.11.*' and extra != 'extra-6-sdasim-calibrate' and extra != 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat' and extra != 'extra-6-sdasim-fits'",
+    "python_full_version >= '3.12' and extra == 'extra-6-sdasim-catalogs' and extra != 'extra-6-sdasim-compat'",
+    "python_full_version == '3.11.*' and extra == 'extra-6-sdasim-catalogs' and extra != 'extra-6-sdasim-compat'",
+    "python_full_version >= '3.12' and extra != 'extra-6-sdasim-catalogs' and extra != 'extra-6-sdasim-compat'",
+    "python_full_version == '3.11.*' and extra != 'extra-6-sdasim-catalogs' and extra != 'extra-6-sdasim-compat'",
 ]
 dependencies = [
     { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
@@ -3024,19 +2976,26 @@ wheels = [
 
 [[package]]
 name = "sdasim"
+version = "0.2.0"
 source = { editable = "." }
 dependencies = [
-    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11' or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
-    { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11' or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
-    { name = "nvitop" },
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11' or (extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11' or (extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
     { name = "pyyaml" },
     { name = "torch" },
 ]
 
 [package.optional-dependencies]
+calibrate = [
+    { name = "astropy", version = "6.1.7", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.11' and extra == 'extra-6-sdasim-calibrate') or (python_full_version < '3.11' and extra == 'extra-6-sdasim-catalogs') or (python_full_version < '3.11' and extra != 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "astropy", version = "7.2.0", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.11' and extra == 'extra-6-sdasim-calibrate') or (python_full_version >= '3.11' and extra == 'extra-6-sdasim-catalogs') or (python_full_version >= '3.11' and extra != 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "matplotlib" },
+    { name = "scipy", version = "1.15.3", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.11' and extra == 'extra-6-sdasim-calibrate') or (python_full_version < '3.11' and extra == 'extra-6-sdasim-catalogs') or (python_full_version < '3.11' and extra != 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "scipy", version = "1.17.1", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.11' and extra == 'extra-6-sdasim-calibrate') or (python_full_version >= '3.11' and extra == 'extra-6-sdasim-catalogs') or (python_full_version >= '3.11' and extra != 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+]
 catalogs = [
-    { name = "astropy", version = "6.1.7", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.11' and extra == 'extra-6-sdasim-catalogs') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
-    { name = "astropy", version = "7.2.0", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.11' and extra == 'extra-6-sdasim-catalogs') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "astropy", version = "6.1.7", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.11' and extra == 'extra-6-sdasim-catalogs') or (python_full_version >= '3.11' and extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-calibrate' and extra != 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra != 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra != 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "astropy", version = "7.2.0", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.11' and extra == 'extra-6-sdasim-catalogs') or (python_full_version < '3.11' and extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (extra != 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra != 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits') or (extra == 'extra-6-sdasim-calibrate' and extra != 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra != 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
 ]
 compat = [
     { name = "satsim" },
@@ -3046,23 +3005,25 @@ dev = [
     { name = "ruff" },
 ]
 fits = [
-    { name = "astropy", version = "6.1.7", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.11' and extra == 'extra-6-sdasim-catalogs') or (python_full_version < '3.11' and extra != 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
-    { name = "astropy", version = "7.2.0", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.11' and extra == 'extra-6-sdasim-catalogs') or (python_full_version >= '3.11' and extra != 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "astropy", version = "6.1.7", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.11' and extra == 'extra-6-sdasim-calibrate') or (python_full_version < '3.11' and extra == 'extra-6-sdasim-catalogs') or (python_full_version < '3.11' and extra != 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "astropy", version = "7.2.0", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.11' and extra == 'extra-6-sdasim-calibrate') or (python_full_version >= '3.11' and extra == 'extra-6-sdasim-catalogs') or (python_full_version >= '3.11' and extra != 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "astropy", marker = "extra == 'calibrate'", specifier = ">=6.0" },
     { name = "astropy", marker = "extra == 'catalogs'", specifier = ">=6.0" },
     { name = "astropy", marker = "extra == 'fits'", specifier = ">=6.0" },
+    { name = "matplotlib", marker = "extra == 'calibrate'", specifier = ">=3.5" },
     { name = "numpy", specifier = ">=1.26" },
-    { name = "nvitop", specifier = ">=1.6.2" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.3" },
     { name = "satsim", marker = "extra == 'compat'" },
+    { name = "scipy", marker = "extra == 'calibrate'", specifier = ">=1.10" },
     { name = "torch", specifier = ">=2.2" },
 ]
-provides-extras = ["catalogs", "compat", "dev", "fits"]
+provides-extras = ["catalogs", "compat", "fits", "calibrate", "dev"]
 
 [[package]]
 name = "semantic-version"
@@ -3116,6 +3077,7 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/62/45/0e35398ef8d4b07ecfa9f7f680e183b2b6af9215a56af34f9e621c29b495/sgp4-2.25-cp313-cp313-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:5789b7add136362684dfcbf0862919f8c3018f74ab11a05a9964edd5fdd4d2a7", size = 235584, upload-time = "2025-08-04T18:02:07.152Z" },
     { url = "https://files.pythonhosted.org/packages/47/b7/1b680b5514586b3860500109ef37fd1761f21e6787f20a2597baa44d91a0/sgp4-2.25-cp313-cp313-win32.whl", hash = "sha256:94219b486def29aa1246f42de8bea05ccb8e98a5458dd08ce42b9811c79ca814", size = 161896, upload-time = "2025-08-04T18:02:08.062Z" },
     { url = "https://files.pythonhosted.org/packages/67/c1/a22be2e7886db40d1512969f3b8cc3ce989167e69ea8f308f26afd1dfd31/sgp4-2.25-cp313-cp313-win_amd64.whl", hash = "sha256:dec2f6c842d9bf40c67d5764bd752980844f91f338020d2af7f85847364d0ff7", size = 164142, upload-time = "2025-08-04T18:02:09Z" },
+    { url = "https://files.pythonhosted.org/packages/3a/47/8231e3d4a88341316ec8d0eb98d3a8a972477d8b038555259522735a8371/sgp4-2.25-py3-none-any.whl", hash = "sha256:4f39ecf6c2663109fed04adfe9982815ac83893271b521d92d5b186820f8c78e", size = 137376, upload-time = "2026-04-27T18:29:23.71Z" },
 ]
 
 [[package]]
@@ -3134,8 +3096,8 @@ source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "certifi" },
     { name = "jplephem" },
-    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
-    { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
     { name = "sgp4" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/c9/8c/98bf5d9042218580fc10c4ba0c51b9af26bc73b614ce64341c0dfad39074/skyfield-1.54.tar.gz", hash = "sha256:bf8b79d6dbbe1add0327aca485d6388bb6a13cab70528d015913a9b07a1d6903", size = 346829, upload-time = "2026-01-18T19:16:15.114Z" }
@@ -3163,8 +3125,8 @@ dependencies = [
     { name = "absl-py" },
     { name = "grpcio" },
     { name = "markdown" },
-    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
-    { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
     { name = "packaging" },
     { name = "pillow" },
     { name = "protobuf" },
@@ -3198,12 +3160,12 @@ dependencies = [
     { name = "google-pasta" },
     { name = "grpcio" },
     { name = "h5py" },
-    { name = "keras", version = "3.12.1", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
-    { name = "keras", version = "3.13.2", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "keras", version = "3.12.1", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "keras", version = "3.13.2", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
     { name = "libclang" },
     { name = "ml-dtypes" },
-    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
-    { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.11' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
     { name = "opt-einsum" },
     { name = "packaging" },
     { name = "protobuf" },
@@ -3334,30 +3296,30 @@ name = "torch"
 version = "2.10.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "cuda-bindings", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "cuda-bindings", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
     { name = "filelock" },
     { name = "fsspec" },
     { name = "jinja2" },
-    { name = "networkx", version = "3.4.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11' or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
-    { name = "networkx", version = "3.6.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11' or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
-    { name = "nvidia-cublas-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
-    { name = "nvidia-cuda-cupti-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
-    { name = "nvidia-cuda-nvrtc-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
-    { name = "nvidia-cuda-runtime-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
-    { name = "nvidia-cudnn-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
-    { name = "nvidia-cufft-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
-    { name = "nvidia-cufile-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
-    { name = "nvidia-curand-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
-    { name = "nvidia-cusolver-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
-    { name = "nvidia-cusparse-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
-    { name = "nvidia-cusparselt-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
-    { name = "nvidia-nccl-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
-    { name = "nvidia-nvjitlink-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
-    { name = "nvidia-nvshmem-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
-    { name = "nvidia-nvtx-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
-    { name = "setuptools", marker = "python_full_version >= '3.12' or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "networkx", version = "3.4.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11' or (extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "networkx", version = "3.6.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11' or (extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "nvidia-cublas-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "nvidia-cuda-cupti-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "nvidia-cuda-nvrtc-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "nvidia-cuda-runtime-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "nvidia-cudnn-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "nvidia-cufft-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "nvidia-cufile-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "nvidia-curand-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "nvidia-cusolver-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "nvidia-cusparse-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "nvidia-cusparselt-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "nvidia-nccl-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "nvidia-nvjitlink-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "nvidia-nvshmem-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "nvidia-nvtx-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "setuptools", marker = "python_full_version >= '3.12' or (extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
     { name = "sympy" },
-    { name = "triton", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
+    { name = "triton", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (platform_machine != 'x86_64' and extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-calibrate' and extra == 'extra-6-sdasim-compat') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-catalogs' and extra == 'extra-6-sdasim-compat') or (sys_platform != 'linux' and extra == 'extra-6-sdasim-compat' and extra == 'extra-6-sdasim-fits')" },
     { name = "typing-extensions" },
 ]
 wheels = [
@@ -3365,6 +3327,13 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/0f/8b/4b61d6e13f7108f36910df9ab4b58fd389cc2520d54d81b88660804aad99/torch-2.10.0-2-cp311-none-macosx_11_0_arm64.whl", hash = "sha256:418997cb02d0a0f1497cf6a09f63166f9f5df9f3e16c8a716ab76a72127c714f", size = 79423467, upload-time = "2026-02-10T21:44:48.711Z" },
     { url = "https://files.pythonhosted.org/packages/d3/54/a2ba279afcca44bbd320d4e73675b282fcee3d81400ea1b53934efca6462/torch-2.10.0-2-cp312-none-macosx_11_0_arm64.whl", hash = "sha256:13ec4add8c3faaed8d13e0574f5cd4a323c11655546f91fbe6afa77b57423574", size = 79498202, upload-time = "2026-02-10T21:44:52.603Z" },
     { url = "https://files.pythonhosted.org/packages/ec/23/2c9fe0c9c27f7f6cb865abcea8a4568f29f00acaeadfc6a37f6801f84cb4/torch-2.10.0-2-cp313-none-macosx_11_0_arm64.whl", hash = "sha256:e521c9f030a3774ed770a9c011751fb47c4d12029a3d6522116e48431f2ff89e", size = 79498254, upload-time = "2026-02-10T21:44:44.095Z" },
+    { url = "https://files.pythonhosted.org/packages/16/ee/efbd56687be60ef9af0c9c0ebe106964c07400eade5b0af8902a1d8cd58c/torch-2.10.0-3-cp310-cp310-manylinux_2_28_x86_64.whl", hash = "sha256:a1ff626b884f8c4e897c4c33782bdacdff842a165fee79817b1dd549fdda1321", size = 915510070, upload-time = "2026-03-11T14:16:39.386Z" },
+    { url = "https://files.pythonhosted.org/packages/36/ab/7b562f1808d3f65414cd80a4f7d4bb00979d9355616c034c171249e1a303/torch-2.10.0-3-cp311-cp311-manylinux_2_28_x86_64.whl", hash = "sha256:ac5bdcbb074384c66fa160c15b1ead77839e3fe7ed117d667249afce0acabfac", size = 915518691, upload-time = "2026-03-11T14:15:43.147Z" },
+    { url = "https://files.pythonhosted.org/packages/b3/7a/abada41517ce0011775f0f4eacc79659bc9bc6c361e6bfe6f7052a6b9363/torch-2.10.0-3-cp312-cp312-manylinux_2_28_x86_64.whl", hash = "sha256:98c01b8bb5e3240426dcde1446eed6f40c778091c8544767ef1168fc663a05a6", size = 915622781, upload-time = "2026-03-11T14:17:11.354Z" },
+    { url = "https://files.pythonhosted.org/packages/ab/c6/4dfe238342ffdcec5aef1c96c457548762d33c40b45a1ab7033bb26d2ff2/torch-2.10.0-3-cp313-cp313-manylinux_2_28_x86_64.whl", hash = "sha256:80b1b5bfe38eb0e9f5ff09f206dcac0a87aadd084230d4a36eea5ec5232c115b", size = 915627275, upload-time = "2026-03-11T14:16:11.325Z" },
+    { url = "https://files.pythonhosted.org/packages/d8/f0/72bf18847f58f877a6a8acf60614b14935e2f156d942483af1ffc081aea0/torch-2.10.0-3-cp313-cp313t-manylinux_2_28_x86_64.whl", hash = "sha256:46b3574d93a2a8134b3f5475cfb98e2eb46771794c57015f6ad1fb795ec25e49", size = 915523474, upload-time = "2026-03-11T14:17:44.422Z" },
+    { url = "https://files.pythonhosted.org/packages/f4/39/590742415c3030551944edc2ddc273ea1fdfe8ffb2780992e824f1ebee98/torch-2.10.0-3-cp314-cp314-manylinux_2_28_x86_64.whl", hash = "sha256:b1d5e2aba4eb7f8e87fbe04f86442887f9167a35f092afe4c237dfcaaef6e328", size = 915632474, upload-time = "2026-03-11T14:15:13.666Z" },
+    { url = "https://files.pythonhosted.org/packages/b6/8e/34949484f764dde5b222b7fe3fede43e4a6f0da9d7f8c370bb617d629ee2/torch-2.10.0-3-cp314-cp314t-manylinux_2_28_x86_64.whl", hash = "sha256:0228d20b06701c05a8f978357f657817a4a63984b0c90745def81c18aedfa591", size = 915523882, upload-time = "2026-03-11T14:14:46.311Z" },
     { url = "https://files.pythonhosted.org/packages/0c/1a/c61f36cfd446170ec27b3a4984f072fd06dab6b5d7ce27e11adb35d6c838/torch-2.10.0-cp310-cp310-manylinux_2_28_aarch64.whl", hash = "sha256:5276fa790a666ee8becaffff8acb711922252521b28fbce5db7db5cf9cb2026d", size = 145992962, upload-time = "2026-01-21T16:24:14.04Z" },
     { url = "https://files.pythonhosted.org/packages/b5/60/6662535354191e2d1555296045b63e4279e5a9dbad49acf55a5d38655a39/torch-2.10.0-cp310-cp310-manylinux_2_28_x86_64.whl", hash = "sha256:aaf663927bcd490ae971469a624c322202a2a1e68936eb952535ca4cd3b90444", size = 915599237, upload-time = "2026-01-21T16:23:25.497Z" },
     { url = "https://files.pythonhosted.org/packages/40/b8/66bbe96f0d79be2b5c697b2e0b187ed792a15c6c4b8904613454651db848/torch-2.10.0-cp310-cp310-win_amd64.whl", hash = "sha256:a4be6a2a190b32ff5c8002a0977a25ea60e64f7ba46b1be37093c141d9c49aeb", size = 113720931, upload-time = "2026-01-21T16:24:23.743Z" },
@@ -3465,21 +3434,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/89/24/a2eb353a6edac9a0303977c4cb048134959dd2a51b48a269dfc9dde00c8a/wheel-0.46.3.tar.gz", hash = "sha256:e3e79874b07d776c40bd6033f8ddf76a7dad46a7b8aa1b2787a83083519a1803", size = 60605, upload-time = "2026-01-22T12:39:49.136Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/87/22/b76d483683216dde3d67cba61fb2444be8d5be289bf628c13fc0fd90e5f9/wheel-0.46.3-py3-none-any.whl", hash = "sha256:4b399d56c9d9338230118d705d9737a2a468ccca63d5e813e2a4fc7815d8bc4d", size = 30557, upload-time = "2026-01-22T12:39:48.099Z" },
-]
-
-[[package]]
-name = "windows-curses"
-version = "2.4.1"
-source = { registry = "https://pypi.org/simple" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/15/34/e70815e7ae6f157c00121180a607dbcdc82acfd949c70bba28c45d206dec/windows_curses-2.4.1-cp310-cp310-win32.whl", hash = "sha256:53d711e07194d0d3ff7ceff29e0955b35479bc01465d46c3041de67b8141db2f", size = 71136, upload-time = "2025-01-11T00:26:15.273Z" },
-    { url = "https://files.pythonhosted.org/packages/a6/1d/1bb512c445af24fb0a3dccf9537c8727bba5920e69539227b87f5351f608/windows_curses-2.4.1-cp310-cp310-win_amd64.whl", hash = "sha256:325439cd4f37897a1de8a9c068a5b4c432f9244bf9c855ee2fbeb3fa721a770c", size = 81418, upload-time = "2025-01-11T00:26:16.963Z" },
-    { url = "https://files.pythonhosted.org/packages/74/b3/46a2508fff83b5affb5a311797c584c494b4b0c4c8796a1afa2c1b1e03ac/windows_curses-2.4.1-cp311-cp311-win32.whl", hash = "sha256:4fa1a176bfcf098d0c9bb7bc03dce6e83a4257fc0c66ad721f5745ebf0c00746", size = 71129, upload-time = "2025-01-11T00:26:19.137Z" },
-    { url = "https://files.pythonhosted.org/packages/50/29/fd7c0c80177d8df55f841504a5f332b95b0002c80f82055913b6caac94e6/windows_curses-2.4.1-cp311-cp311-win_amd64.whl", hash = "sha256:fd7d7a9cf6c1758f46ed76b8c67f608bc5fcd5f0ca91f1580fd2d84cf41c7f4f", size = 81431, upload-time = "2025-01-11T00:26:20.359Z" },
-    { url = "https://files.pythonhosted.org/packages/f4/99/60f34e51514c82631aa5c6d21eab88ce1701562de9844608411e39462a46/windows_curses-2.4.1-cp312-cp312-win32.whl", hash = "sha256:bdbe7d58747408aef8a9128b2654acf6fbd11c821b91224b9a046faba8c6b6ca", size = 71489, upload-time = "2025-01-11T00:26:22.726Z" },
-    { url = "https://files.pythonhosted.org/packages/62/8f/d908bcab1954375b156a9300fa86ceccb110f39457cd6fd59c72777626ab/windows_curses-2.4.1-cp312-cp312-win_amd64.whl", hash = "sha256:5c9c2635faf171a229caca80e1dd760ab00db078e2a285ba2f667bbfcc31777c", size = 81777, upload-time = "2025-01-11T00:26:25.273Z" },
-    { url = "https://files.pythonhosted.org/packages/25/a0/e8d074f013117633f6b502ca123ecfc377fe0bd36818fe65e8935c91ca9c/windows_curses-2.4.1-cp313-cp313-win32.whl", hash = "sha256:05d1ca01e5199a435ccb6c8c2978df4a169cdff1ec99ab15f11ded9de8e5be26", size = 71390, upload-time = "2025-01-11T00:26:27.66Z" },
-    { url = "https://files.pythonhosted.org/packages/2b/4b/2838a829b074a68c570d54ae0ae8539979657d3e619a4dc5a4b03eb69745/windows_curses-2.4.1-cp313-cp313-win_amd64.whl", hash = "sha256:8cf653f8928af19c103ae11cfed38124f418dcdd92643c4cd17239c0cec2f9da", size = 81636, upload-time = "2025-01-11T00:26:29.595Z" },
 ]
 
 [[package]]

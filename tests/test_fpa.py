@@ -2,12 +2,9 @@
 
 from __future__ import annotations
 
-import math
-
 import torch
-import pytest
 
-from sdasim.fpa import analog_to_digital, mv_to_pe, pe_to_mv, eod_to_sigma
+from sdasim.fpa import analog_to_digital, eod_to_sigma, mv_to_pe, pe_to_mv
 
 
 class TestMagnitudeConversion:

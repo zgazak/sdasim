@@ -1,25 +1,46 @@
 [build-system]
-requires = ["hatchling", "hatch-vcs"]
+requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
 name = "sdasim"
-dynamic = ["version"]
+version = "0.2.0"
 description = "Speed-optimized differentiable satellite scene simulator"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
+authors = [{ name = "Zach Gazak", email = "jzg@alum.mit.edu" }]
+keywords = [
+    "astronomy",
+    "satellite",
+    "simulation",
+    "differentiable-rendering",
+    "pytorch",
+    "space-domain-awareness",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Astronomy",
+    "Topic :: Scientific/Engineering :: Image Processing",
+]
 dependencies = [
     "torch>=2.2",
     "numpy>=1.26",
     "pyyaml>=6.0",
-    "nvitop>=1.6.2",
 ]
 
 [project.optional-dependencies]
 catalogs = ["astropy>=6.0"]
 compat = ["satsim"]
 fits = ["astropy>=6.0"]
+calibrate = ["astropy>=6.0", "scipy>=1.10", "matplotlib>=3.5"]
 dev = [
     "pytest>=8.0",
     "ruff>=0.3",
@@ -27,13 +48,29 @@ dev = [
 
 [project.scripts]
 sdasim = "sdasim.cli:main"
+sdasim-calibrate = "sdasim.calibrate:main"
+sdasim-streak-vis = "sdasim.streak_vis:main"
 
-[tool.hatch.version]
-source = "vcs"
-fallback-version = "0.1.0"
+[project.urls]
+Homepage = "https://github.com/zgazak/sdasim"
+Repository = "https://github.com/zgazak/sdasim"
+Issues = "https://github.com/zgazak/sdasim/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/sdasim"]
+
+# Explicit sdist contents so packaging never depends on gitignore semantics
+# (keeps local/editor state like .claude/ and CLAUDE.md out of the tarball).
+[tool.hatch.build.targets.sdist]
+include = [
+    "src/sdasim",
+    "tests",
+    "examples",
+    "docs",
+    "README.md",
+    "LICENSE",
+    "Makefile",
+]
 
 [tool.ruff]
 line-length = 100
@@ -43,6 +80,8 @@ target-version = "py310"
 select = ["E", "F", "W", "I"]
 
 [tool.uv]
+# satsim (the optional `compat` converter dep) pins old numpy/astropy, which
+# conflicts with every astropy-based extra. Keep it isolated in its own group.
 conflicts = [
     [
         { extra = "compat" },
@@ -51,6 +90,10 @@ conflicts = [
     [
         { extra = "compat" },
         { extra = "fits" },
+    ],
+    [
+        { extra = "compat" },
+        { extra = "calibrate" },
     ],
 ]
 

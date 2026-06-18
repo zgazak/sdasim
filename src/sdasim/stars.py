@@ -28,7 +28,9 @@ def generate_random_stars(
 ) -> tuple[Tensor, Tensor]:
     """Generate random stars using magnitude bins and star density.
 
-    Ports satsim's geometry/random.py:gen_random_points.
+    Each magnitude bin is populated as a spatial Poisson process: the star count
+    is drawn from Poisson(density * field_area), with magnitudes uniform within
+    the bin and positions uniform over the (padded) field of view.
 
     Args:
         height: Image height in pixels.
@@ -134,8 +136,16 @@ def load_sstr7(
 
     dev = resolve_device(device)
 
-    kwargs = {"height": height, "width": width, "y_fov": y_fov, "x_fov": x_fov,
-              "ra": ra, "dec": dec, "rot": rot, "pad_mult": pad_mult}
+    kwargs = {
+        "height": height,
+        "width": width,
+        "y_fov": y_fov,
+        "x_fov": x_fov,
+        "ra": ra,
+        "dec": dec,
+        "rot": rot,
+        "pad_mult": pad_mult,
+    }
     if catalog_path is not None:
         kwargs["rootPath"] = catalog_path
 
@@ -144,7 +154,8 @@ def load_sstr7(
     pe = np.array([mv_to_pe(zeropoint, float(m)) * exposure for m in mv])
     positions = torch.tensor(
         np.stack([np.array(rr), np.array(cc)], axis=1),
-        dtype=torch.float32, device=dev,
+        dtype=torch.float32,
+        device=dev,
     )
     intensities = torch.tensor(pe, dtype=torch.float32, device=dev)
     return positions, intensities

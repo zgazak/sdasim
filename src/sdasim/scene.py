@@ -10,11 +10,19 @@ import math
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import torch
 from torch import Tensor
 
-from sdasim.config import SceneConfig, SensorConfig, load_config
+from sdasim.config import SceneConfig, load_config
 from sdasim.device import resolve_device
+from sdasim.empirical import (
+    BasicWhiteNoise,
+    EmpiricalNoise,
+    EmpiricalPSF,
+    gaussian_kernel,
+    render_frame_empirical,
+)
 from sdasim.fpa import mv_to_pe
 from sdasim.render import render_frame
 from sdasim.stars import generate_random_stars
@@ -78,9 +86,7 @@ class Scene:
 
         # Validate mode
         if config.mode == "rate_sidereal" and config.sidereal_start is None:
-            raise ValueError(
-                "mode='rate_sidereal' requires sidereal_start to be set"
-            )
+            raise ValueError("mode='rate_sidereal' requires sidereal_start to be set")
 
         # Seed
         if config.seed is not None:
@@ -98,6 +104,56 @@ class Scene:
 
         # Bias
         self.bias_pe = self.sensor.bias
+
+        # Empirical (opt-in) bases — loaded once; default path leaves these None
+        self._np_rng = np.random.default_rng(config.seed)
+        # per-scene torch generator so empirical noise/texture/wobble/speckle are reproducible
+        # per scene regardless of global RNG order (important for batched rendering)
+        if config.seed is not None:
+            self._gen = torch.Generator(device=self.device)
+            self._gen.manual_seed(int(config.seed))
+        else:
+            self._gen = None
+        self.emp_psf = None
+        self.emp_noise = None
+        if self.sensor.psf_model == "empirical":
+            if not self.sensor.empirical_psf_path:
+                raise ValueError("psf_model='empirical' requires sensor.empirical_psf_path")
+            self.emp_psf = EmpiricalPSF(self.sensor.empirical_psf_path)
+        if self.sensor.noise_model == "empirical":
+            if not self.sensor.empirical_noise_path:
+                raise ValueError("noise_model='empirical' requires sensor.empirical_noise_path")
+            self.emp_noise = EmpiricalNoise(self.sensor.empirical_noise_path)
+        # Streak texture: 4 calibrated atmospheric components, opt-in via amplitude in
+        # streak_model.json: scintillation (intensity), tip/tilt (position), seeing-breathing
+        # (PSF size), and a post-PSF high-frequency plateau (the measured 3-9px texture band).
+        self.streak_tex = dict(
+            scint_rms=0.0,
+            tiptilt_rms=0.0,
+            seeing_rms=0.0,
+            hf_rms=0.0,
+            beta=2.0,
+            decon_px=1.3,
+            hf_klo=0.08,
+            hf_khi=0.30,
+            hf_slope=1.2,
+            floor_frac=0.45,
+        )
+        self.streak_dist = None  # measured (mean,std) of amplitudes, for per-render sampling
+        # seeing-breathing kernel (symmetric PSF size derivative), built once
+        self.size_mode = self.emp_psf.size_mode(device=self.device) if self.emp_psf else None
+        if self.sensor.empirical_streak_path:
+            import json as _json
+
+            sj = _json.load(open(self.sensor.empirical_streak_path))
+            for k in self.streak_tex:
+                if ("tex_" + k) in sj:
+                    self.streak_tex[k] = float(sj["tex_" + k])
+            self.streak_dist = {
+                "scint": sj.get("dist_tex_scint_rms"),
+                "tiptilt": sj.get("dist_tex_tiptilt_rms"),
+                "seeing": sj.get("dist_tex_seeing_rms"),
+            }
 
     def _load_stars(self, config: SceneConfig) -> None:
         """Load star catalog based on config."""
@@ -138,19 +194,21 @@ class Scene:
         else:
             raise ValueError(f"Unknown star mode: {sc.mode}")
 
-    def render(
+    def render(self, frame_idx: int = 0, **overrides: Any) -> tuple[Tensor, dict]:
+        """Render a single frame -> (digital_image, metadata_dict)."""
+        digital, _, _, meta = self.render_signals(frame_idx, **overrides)
+        return digital, meta
+
+    def render_signals(
         self,
         frame_idx: int = 0,
         **overrides: Any,
-    ) -> tuple[Tensor, dict]:
-        """Render a single frame.
+    ) -> tuple[Tensor, Tensor, Tensor, dict]:
+        """Render one frame -> (digital, star_signal, target_signal, metadata).
 
         Args:
             frame_idx: Frame index (affects target positions and star motion).
             **overrides: Override any render parameter (psf_sigma, target positions, etc.)
-
-        Returns:
-            (digital_image, metadata_dict)
         """
         sensor = self.sensor
         sm = self.config.star_motion
@@ -167,7 +225,10 @@ class Scene:
 
         # Compute target positions/velocities for this frame
         tgt_pos, tgt_int, tgt_vel = compute_target_positions(
-            self.config.targets, sensor, frame_idx, self.device,
+            self.config.targets,
+            sensor,
+            frame_idx,
+            self.device,
         )
 
         # Allow overrides
@@ -186,7 +247,9 @@ class Scene:
             # In rate-track frames, convert to sensor frame:
             #   apparent_vel = V_inertial + translation
             translation_t = torch.tensor(
-                sm.translation, dtype=torch.float32, device=self.device,
+                sm.translation,
+                dtype=torch.float32,
+                device=self.device,
             )
 
             if is_sidereal:
@@ -205,7 +268,11 @@ class Scene:
                 star_osf = sm.temporal_osf
                 # Apply accumulated inter-frame star drift
                 star_positions = _apply_star_offset(
-                    star_positions, sm.translation, sm.rotation, frame_start, center,
+                    star_positions,
+                    sm.translation,
+                    sm.rotation,
+                    frame_start,
+                    center,
                 )
         else:
             # Legacy mode (None): star_motion applies uniformly,
@@ -214,38 +281,99 @@ class Scene:
             star_rot = sm.rotation
             star_osf = sm.temporal_osf
             star_positions = _apply_star_offset(
-                star_positions, sm.translation, sm.rotation, frame_start, center,
+                star_positions,
+                sm.translation,
+                sm.rotation,
+                frame_start,
+                center,
             )
 
         # Target velocities: pass None if no targets
         if target_velocities.shape[0] == 0:
             target_velocities = None
 
-        digital, star_signal, target_signal = render_frame(
-            height=sensor.height,
-            width=sensor.width,
-            star_positions=star_positions,
-            star_intensities=star_intensities,
-            target_positions=target_positions,
-            target_intensities=target_intensities,
-            psf_sigma=psf_sigma,
-            background_pe=self.background_pe,
-            dark_current_pe=self.dark_current_pe,
-            bias_pe=self.bias_pe,
-            read_noise=sensor.read_noise,
-            electronic_noise=sensor.electronic_noise,
-            gain=sensor.gain,
-            fwc=sensor.fwc,
-            a2d_bias=sensor.a2d_bias,
-            a2d_dtype=sensor.a2d_dtype,
-            enable_shot_noise=self.config.enable_shot_noise,
-            enable_read_noise=self.config.enable_read_noise,
-            star_velocity=star_vel,
-            star_rotation=star_rot,
-            target_velocities=target_velocities,
-            t_osf=star_osf,
-            exposure=sensor.exposure,
-        )
+        use_empirical = sensor.psf_model == "empirical" or sensor.noise_model == "empirical"
+        psf_params = None
+        tex_used = None
+        if use_empirical:
+            # Per-frame PSF kernel (empirical mean PSF warped by sampled size/ellipticity,
+            # or a Gaussian kernel when only the empirical noise is requested).
+            if sensor.psf_model == "empirical":
+                if sensor.psf_param_scale <= 0:
+                    psf_params = self.emp_psf.param_mean
+                else:
+                    psf_params = self.emp_psf.sample_params(self._np_rng, sensor.psf_param_scale)
+                kernel = self.emp_psf.kernel(params=psf_params, device=self.device)
+            else:
+                K = self.emp_psf.K if self.emp_psf is not None else 31
+                kernel = gaussian_kernel(float(psf_sigma), K, device=self.device)
+            noise = (
+                self.emp_noise
+                if sensor.noise_model == "empirical"
+                else BasicWhiteNoise(sensor.read_noise)
+            )
+            # streak texture amplitudes: per-streak diversity via streak_param_sample
+            tex = dict(self.streak_tex)
+            if sensor.streak_param_sample:
+                ext = sensor.streak_param_extend
+                f = max(0.2, float(self._np_rng.normal(1.0, 0.3 * ext)))
+                for key in ("scint_rms", "tiptilt_rms", "seeing_rms", "hf_rms"):
+                    tex[key] = tex[key] * f
+            tex_used = tex
+            digital, star_signal, target_signal = render_frame_empirical(
+                height=sensor.height,
+                width=sensor.width,
+                star_positions=star_positions,
+                star_intensities=star_intensities,
+                target_positions=target_positions,
+                target_intensities=target_intensities,
+                kernel=kernel,
+                noise=noise,
+                star_velocity=star_vel,
+                star_rotation=star_rot,
+                target_velocities=target_velocities,
+                t_osf=star_osf,
+                exposure=sensor.exposure,
+                tex_scint_rms=tex["scint_rms"],
+                tex_tiptilt_rms=tex["tiptilt_rms"],
+                tex_seeing_rms=tex["seeing_rms"],
+                tex_hf_rms=tex["hf_rms"],
+                tex_beta=tex["beta"],
+                tex_decon_px=tex["decon_px"],
+                tex_hf_klo=tex["hf_klo"],
+                tex_hf_khi=tex["hf_khi"],
+                tex_hf_slope=tex["hf_slope"],
+                tex_floor_frac=tex["floor_frac"],
+                size_mode=self.size_mode,
+                match_stage=sensor.apply_rowcol_median,
+                generator=self._gen,
+            )
+        else:
+            digital, star_signal, target_signal = render_frame(
+                height=sensor.height,
+                width=sensor.width,
+                star_positions=star_positions,
+                star_intensities=star_intensities,
+                target_positions=target_positions,
+                target_intensities=target_intensities,
+                psf_sigma=psf_sigma,
+                background_pe=self.background_pe,
+                dark_current_pe=self.dark_current_pe,
+                bias_pe=self.bias_pe,
+                read_noise=sensor.read_noise,
+                electronic_noise=sensor.electronic_noise,
+                gain=sensor.gain,
+                fwc=sensor.fwc,
+                a2d_bias=sensor.a2d_bias,
+                a2d_dtype=sensor.a2d_dtype,
+                enable_shot_noise=self.config.enable_shot_noise,
+                enable_read_noise=self.config.enable_read_noise,
+                star_velocity=star_vel,
+                star_rotation=star_rot,
+                target_velocities=target_velocities,
+                t_osf=star_osf,
+                exposure=sensor.exposure,
+            )
 
         # Frame mode label
         if self.config.mode == "rate_sidereal":
@@ -264,8 +392,7 @@ class Scene:
             "star_velocity": list(star_vel),  # [row_rate, col_rate] px/sec
             "star_rotation": star_rot,  # rad/sec
             "target_velocities": (
-                target_velocities.detach().cpu().tolist()
-                if target_velocities is not None else []
+                target_velocities.detach().cpu().tolist() if target_velocities is not None else []
             ),  # [[row_rate, col_rate], ...] px/sec
             "exposure": sensor.exposure,  # seconds
             "obs_time": self.config.obs_time,
@@ -278,11 +405,15 @@ class Scene:
             "psf_sigma": float(psf_sigma) if not isinstance(psf_sigma, float) else psf_sigma,
             "zeropoint": sensor.zeropoint,
             "a2d_dtype": sensor.a2d_dtype,
+            "psf_model": sensor.psf_model,
+            "noise_model": sensor.noise_model,
+            "psf_params": ([float(p) for p in psf_params] if psf_params is not None else None),
+            "streak_texture": (tex_used if tex_used is not None else None),
             "_height": sensor.height,
             "_width": sensor.width,
         }
 
-        return digital, metadata
+        return digital, star_signal, target_signal, metadata
 
     def render_batch(
         self,
@@ -337,6 +468,7 @@ class Scene:
 
         if isinstance(satsim_config, (str, Path)):
             import json
+
             import yaml
 
             path = Path(satsim_config)

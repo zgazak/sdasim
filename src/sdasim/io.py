@@ -10,8 +10,8 @@ import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-import torch
 from torch import Tensor
+
 
 def _build_fits_header(meta: dict, frame_index: int) -> dict:
     """Build FITS header dict from render metadata.

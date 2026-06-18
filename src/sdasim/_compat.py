@@ -7,7 +7,6 @@ $sample/$ref/$generator, calls satsim.config.loading.realize() first
 
 from __future__ import annotations
 
-import math
 from typing import Any
 
 from sdasim.config import (
@@ -119,12 +118,24 @@ def from_satsim_config(satsim_dict: dict, seed: int | None = None) -> SceneConfi
     bias = _get(fpa, "bias", default=50.0)
 
     sensor = SensorConfig(
-        height=height, width=width, y_fov=y_fov, x_fov=x_fov,
-        exposure=exposure, gap=gap, num_frames=num_frames,
-        zeropoint=zeropoint, psf_sigma=psf_sigma,
-        dark_current=dark_current, read_noise=read_noise,
-        electronic_noise=electronic_noise, background_mv=background_mv,
-        bias=bias, gain=gain, fwc=fwc, a2d_bias=a2d_bias, a2d_dtype=a2d_dtype,
+        height=height,
+        width=width,
+        y_fov=y_fov,
+        x_fov=x_fov,
+        exposure=exposure,
+        gap=gap,
+        num_frames=num_frames,
+        zeropoint=zeropoint,
+        psf_sigma=psf_sigma,
+        dark_current=dark_current,
+        read_noise=read_noise,
+        electronic_noise=electronic_noise,
+        background_mv=background_mv,
+        bias=bias,
+        gain=gain,
+        fwc=fwc,
+        a2d_bias=a2d_bias,
+        a2d_dtype=a2d_dtype,
     )
 
     # Stars
@@ -146,8 +157,6 @@ def from_satsim_config(satsim_dict: dict, seed: int | None = None) -> SceneConfi
         stars = StarFieldConfig(mode="bins")
 
     # Star motion
-    site_cfg = _get(geom, "site", default={})
-    track_cfg = _get(geom, "track", default={})
     star_motion_cfg = _get(geom, "star_motion", default={})
 
     rotation = _get(star_motion_cfg, "rotation", default=0.0)

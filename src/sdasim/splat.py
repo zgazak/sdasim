@@ -1,6 +1,6 @@
 """PSF splatting kernels — core rendering primitives.
 
-Replaces satsim's oversample -> FFT convolve -> downsample pipeline with
+Replaces the conventional oversample -> FFT convolve -> downsample pipeline with
 direct analytical PSF splatting at native resolution.
 
 For torch.compile() compatibility, pass radius explicitly to avoid graph breaks.
@@ -213,17 +213,12 @@ def splat_gaussians_batched(
     frame_flat = frame_exp.reshape(-1)
     val_flat = gauss_2d.reshape(-1)
 
-    valid = (
-        (row_flat >= 0) & (row_flat < height)
-        & (col_flat >= 0) & (col_flat < width)
-    )
+    valid = (row_flat >= 0) & (row_flat < height) & (col_flat >= 0) & (col_flat < width)
     row_safe = row_flat.clamp(0, height - 1)
     col_safe = col_flat.clamp(0, width - 1)
     val_safe = val_flat * valid.to(dtype)
 
-    linear_idx = (
-        frame_flat * (height * width) + row_safe * width + col_safe
-    )
+    linear_idx = frame_flat * (height * width) + row_safe * width + col_safe
     image = torch.zeros(batch_size * height * width, dtype=dtype, device=device)
     image.scatter_add_(0, linear_idx, val_safe)
 
@@ -233,6 +228,7 @@ def splat_gaussians_batched(
 # ---------------------------------------------------------------------------
 # Moffat splatting
 # ---------------------------------------------------------------------------
+
 
 def splat_moffat_batched(
     batch_size: int,
@@ -318,10 +314,7 @@ def splat_moffat_batched(
     frame_flat = frame_exp.reshape(-1)
     val_flat = psf.reshape(-1)
 
-    valid = (
-        (row_flat >= 0) & (row_flat < height)
-        & (col_flat >= 0) & (col_flat < width)
-    )
+    valid = (row_flat >= 0) & (row_flat < height) & (col_flat >= 0) & (col_flat < width)
     row_safe = row_flat.clamp(0, height - 1)
     col_safe = col_flat.clamp(0, width - 1)
     val_safe = val_flat * valid.to(dtype)
@@ -335,6 +328,7 @@ def splat_moffat_batched(
 # ---------------------------------------------------------------------------
 # Elliptical Gaussian splatting
 # ---------------------------------------------------------------------------
+
 
 def splat_elliptical_gaussian_batched(
     batch_size: int,
@@ -395,7 +389,7 @@ def splat_elliptical_gaussian_batched(
     dc = col_int.to(dtype) - col_center
 
     # 2D offsets in image frame
-    dr_2d = dr.unsqueeze(2).expand(-1, -1, K)   # (N, K, K)
+    dr_2d = dr.unsqueeze(2).expand(-1, -1, K)  # (N, K, K)
     dc_2d = dc.unsqueeze(1).expand(-1, K, -1)
 
     cos_t = torch.cos(theta).view(N, 1, 1)
@@ -421,10 +415,7 @@ def splat_elliptical_gaussian_batched(
     frame_flat = frame_exp.reshape(-1)
     val_flat = psf.reshape(-1)
 
-    valid = (
-        (row_flat >= 0) & (row_flat < height)
-        & (col_flat >= 0) & (col_flat < width)
-    )
+    valid = (row_flat >= 0) & (row_flat < height) & (col_flat >= 0) & (col_flat < width)
     row_safe = row_flat.clamp(0, height - 1)
     col_safe = col_flat.clamp(0, width - 1)
     val_safe = val_flat * valid.to(dtype)
