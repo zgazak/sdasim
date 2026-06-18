@@ -2,9 +2,9 @@
 
 ## What is sdasim?
 
-A from-scratch reimplementation of satsim optimized for speed and differentiability.
-Uses analytical Gaussian splatting instead of FFT convolution — ~800x fewer ops for
-the PSF step on typical scenes.
+A from-scratch, GPU-first satellite scene simulator optimized for speed and
+differentiability. Uses analytical Gaussian splatting instead of FFT convolution —
+~800x fewer ops for the PSF step on typical scenes.
 
 ## Quick Start
 

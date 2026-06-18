@@ -28,7 +28,9 @@ def generate_random_stars(
 ) -> tuple[Tensor, Tensor]:
     """Generate random stars using magnitude bins and star density.
 
-    Ports satsim's geometry/random.py:gen_random_points.
+    Each magnitude bin is populated as a spatial Poisson process: the star count
+    is drawn from Poisson(density * field_area), with magnitudes uniform within
+    the bin and positions uniform over the (padded) field of view.
 
     Args:
         height: Image height in pixels.
@@ -114,7 +116,7 @@ def load_sstr7(
     pad_mult: float = 1.0,
     device: str | torch.device | None = None,
 ) -> tuple[Tensor, Tensor]:
-    """Load stars from SSTR7 catalog. Requires astropy.
+    """Load stars from SSTRC7 catalog. Requires astropy.
 
     Args:
         height, width: Image dimensions.
@@ -123,34 +125,37 @@ def load_sstr7(
         rot: Rotation angle in degrees.
         zeropoint: Sensor zeropoint.
         exposure: Exposure time in seconds.
-        catalog_path: Path to SSTR7 catalog directory.
+        catalog_path: Path to SSTRC7 catalog directory.
         pad_mult: Padding multiplier.
         device: Target device.
 
     Returns:
         (positions, intensities): (M, 2) row/col, (M,) PE counts.
     """
-    try:
-        from satsim.geometry.sstr7 import query_by_los
-    except ImportError:
-        raise ImportError(
-            "SSTR7 catalog loading requires satsim. "
-            "Install with: pip install satsim"
-        )
+    from sdasim.sstr7 import query_by_los
 
     dev = resolve_device(device)
 
-    kwargs = {"height": height, "width": width, "y_fov": y_fov, "x_fov": x_fov,
-              "ra": ra, "dec": dec, "rot": rot, "pad_mult": pad_mult}
+    kwargs = {
+        "height": height,
+        "width": width,
+        "y_fov": y_fov,
+        "x_fov": x_fov,
+        "ra": ra,
+        "dec": dec,
+        "rot": rot,
+        "pad_mult": pad_mult,
+    }
     if catalog_path is not None:
         kwargs["rootPath"] = catalog_path
 
-    rr, cc, mv, _, _ = query_by_los(**kwargs)
+    rr, cc, mv = query_by_los(**kwargs)
 
     pe = np.array([mv_to_pe(zeropoint, float(m)) * exposure for m in mv])
     positions = torch.tensor(
         np.stack([np.array(rr), np.array(cc)], axis=1),
-        dtype=torch.float32, device=dev,
+        dtype=torch.float32,
+        device=dev,
     )
     intensities = torch.tensor(pe, dtype=torch.float32, device=dev)
     return positions, intensities

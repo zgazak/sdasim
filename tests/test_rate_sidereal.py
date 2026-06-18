@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import torch
 import pytest
+import torch
 
 from sdasim.config import (
     SceneConfig,
@@ -12,33 +12,54 @@ from sdasim.config import (
     StarMotionConfig,
     TargetConfig,
 )
-from sdasim.scene import Scene
 from sdasim.sampler import SceneDistribution, random_scene
+from sdasim.scene import Scene
 
 
 def _make_rate_sidereal_config(**overrides) -> SceneConfig:
     """Create a minimal rate_sidereal config for testing."""
     sensor = SensorConfig(
-        height=32, width=32, y_fov=0.1, x_fov=0.1,
-        exposure=1.0, gap=0.0, num_frames=4, zeropoint=20.0,
-        psf_sigma=1.0, dark_current=0.0, read_noise=0.0,
-        electronic_noise=0.0, background_mv=30.0, bias=0.0,
-        gain=1.0, fwc=1e9, a2d_bias=0.0, a2d_dtype="uint16",
+        height=32,
+        width=32,
+        y_fov=0.1,
+        x_fov=0.1,
+        exposure=1.0,
+        gap=0.0,
+        num_frames=4,
+        zeropoint=20.0,
+        psf_sigma=1.0,
+        dark_current=0.0,
+        read_noise=0.0,
+        electronic_noise=0.0,
+        background_mv=30.0,
+        bias=0.0,
+        gain=1.0,
+        fwc=1e9,
+        a2d_bias=0.0,
+        a2d_dtype="uint16",
     )
     stars = StarFieldConfig(mode="bins", mv_bins=[10, 11, 12], density=[20.0, 40.0])
     star_motion = StarMotionConfig(
-        translation=[5.0, -3.0], temporal_osf=50,
+        translation=[5.0, -3.0],
+        temporal_osf=50,
     )
     # On-rate target: V_inertial ≈ -translation -> near-stationary when tracked
     # Off-rate target: arbitrary V_inertial
     targets = [
-        TargetConfig(origin=[0.5, 0.5], velocity=[-5.0, 3.0], mv=10.0),   # on-rate
-        TargetConfig(origin=[0.3, 0.7], velocity=[8.0, -4.0], mv=10.0),   # off-rate
+        TargetConfig(origin=[0.5, 0.5], velocity=[-5.0, 3.0], mv=10.0),  # on-rate
+        TargetConfig(origin=[0.3, 0.7], velocity=[8.0, -4.0], mv=10.0),  # off-rate
     ]
     defaults = dict(
-        sensor=sensor, stars=stars, star_motion=star_motion, targets=targets,
-        seed=42, device="cpu", enable_shot_noise=False, enable_read_noise=False,
-        mode="rate_sidereal", sidereal_start=2,
+        sensor=sensor,
+        stars=stars,
+        star_motion=star_motion,
+        targets=targets,
+        seed=42,
+        device="cpu",
+        enable_shot_noise=False,
+        enable_read_noise=False,
+        mode="rate_sidereal",
+        sidereal_start=2,
     )
     defaults.update(overrides)
     return SceneConfig(**defaults)
@@ -75,15 +96,29 @@ class TestRateSidereal:
         """Legacy mode (None) should set frame_mode to None."""
         cfg = SceneConfig(
             sensor=SensorConfig(
-                height=32, width=32, y_fov=0.1, x_fov=0.1,
-                exposure=1.0, num_frames=2, zeropoint=20.0,
-                psf_sigma=1.0, dark_current=0.0, read_noise=0.0,
-                electronic_noise=0.0, background_mv=30.0, bias=0.0,
-                gain=1.0, fwc=1e9, a2d_bias=0.0, a2d_dtype="uint16",
+                height=32,
+                width=32,
+                y_fov=0.1,
+                x_fov=0.1,
+                exposure=1.0,
+                num_frames=2,
+                zeropoint=20.0,
+                psf_sigma=1.0,
+                dark_current=0.0,
+                read_noise=0.0,
+                electronic_noise=0.0,
+                background_mv=30.0,
+                bias=0.0,
+                gain=1.0,
+                fwc=1e9,
+                a2d_bias=0.0,
+                a2d_dtype="uint16",
             ),
             stars=StarFieldConfig(mode="bins", mv_bins=[12, 13], density=[5.0]),
-            seed=42, device="cpu",
-            enable_shot_noise=False, enable_read_noise=False,
+            seed=42,
+            device="cpu",
+            enable_shot_noise=False,
+            enable_read_noise=False,
         )
         scene = Scene(cfg)
         _, meta = scene.render(0)
@@ -163,17 +198,32 @@ class TestRateSidereal:
         """Legacy mode=None should produce identical results to pre-change behavior."""
         cfg = SceneConfig(
             sensor=SensorConfig(
-                height=32, width=32, y_fov=0.1, x_fov=0.1,
-                exposure=1.0, gap=0.0, num_frames=3, zeropoint=20.0,
-                psf_sigma=1.0, dark_current=0.0, read_noise=0.0,
-                electronic_noise=0.0, background_mv=30.0, bias=0.0,
-                gain=1.0, fwc=1e9, a2d_bias=0.0, a2d_dtype="uint16",
+                height=32,
+                width=32,
+                y_fov=0.1,
+                x_fov=0.1,
+                exposure=1.0,
+                gap=0.0,
+                num_frames=3,
+                zeropoint=20.0,
+                psf_sigma=1.0,
+                dark_current=0.0,
+                read_noise=0.0,
+                electronic_noise=0.0,
+                background_mv=30.0,
+                bias=0.0,
+                gain=1.0,
+                fwc=1e9,
+                a2d_bias=0.0,
+                a2d_dtype="uint16",
             ),
             stars=StarFieldConfig(mode="bins", mv_bins=[10, 11], density=[20.0]),
             star_motion=StarMotionConfig(translation=[3.0, -2.0], temporal_osf=20),
             targets=[TargetConfig(origin=[0.5, 0.5], velocity=[1.0, 2.0], mv=12.0)],
-            seed=7, device="cpu",
-            enable_shot_noise=False, enable_read_noise=False,
+            seed=7,
+            device="cpu",
+            enable_shot_noise=False,
+            enable_read_noise=False,
         )
         scene = Scene(cfg)
         # Should render without error and mode is None

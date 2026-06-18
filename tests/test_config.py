@@ -2,13 +2,9 @@
 
 from __future__ import annotations
 
-import tempfile
-from pathlib import Path
-
 import yaml
-import pytest
 
-from sdasim.config import SceneConfig, SensorConfig, load_config, _dataclass_from_dict
+from sdasim.config import SceneConfig, _dataclass_from_dict, load_config
 
 
 class TestSceneConfig:
@@ -26,9 +22,7 @@ class TestSceneConfig:
         """Building from nested dict should work."""
         data = {
             "sensor": {"height": 256, "width": 256, "psf_sigma": 2.0},
-            "targets": [
-                {"mode": "line", "origin": [0.5, 0.5], "velocity": [1.0, 2.0], "mv": 10.0}
-            ],
+            "targets": [{"mode": "line", "origin": [0.5, 0.5], "velocity": [1.0, 2.0], "mv": 10.0}],
             "seed": 123,
         }
         cfg = _dataclass_from_dict(SceneConfig, data)

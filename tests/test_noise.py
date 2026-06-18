@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import torch
-import pytest
 
-from sdasim.noise import poisson_noise, gaussian_noise
+from sdasim.noise import gaussian_noise, poisson_noise
 
 
 class TestPoissonNoise:

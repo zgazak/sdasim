@@ -2,11 +2,8 @@
 
 from __future__ import annotations
 
-import tempfile
-
 import torch
 import yaml
-import pytest
 
 from sdasim.config import SceneConfig, SensorConfig, StarFieldConfig, StarMotionConfig, TargetConfig
 from sdasim.scene import Scene
@@ -18,19 +15,38 @@ class TestScene:
     def _make_config(self, **overrides) -> SceneConfig:
         """Create a minimal config for testing."""
         sensor = SensorConfig(
-            height=32, width=32, y_fov=0.1, x_fov=0.1,
-            exposure=1.0, num_frames=4, zeropoint=20.0,
-            psf_sigma=1.0, dark_current=5.0, read_noise=8.0,
-            electronic_noise=3.0, background_mv=20.0, bias=100.0,
-            gain=4.0, fwc=50000.0, a2d_bias=200.0, a2d_dtype="uint16",
+            height=32,
+            width=32,
+            y_fov=0.1,
+            x_fov=0.1,
+            exposure=1.0,
+            num_frames=4,
+            zeropoint=20.0,
+            psf_sigma=1.0,
+            dark_current=5.0,
+            read_noise=8.0,
+            electronic_noise=3.0,
+            background_mv=20.0,
+            bias=100.0,
+            gain=4.0,
+            fwc=50000.0,
+            a2d_bias=200.0,
+            a2d_dtype="uint16",
         )
         stars = StarFieldConfig(
-            mode="bins", mv_bins=[12, 13, 14], density=[5.0, 10.0],
+            mode="bins",
+            mv_bins=[12, 13, 14],
+            density=[5.0, 10.0],
         )
         targets = [TargetConfig(origin=[0.5, 0.5], velocity=[2.0, 3.0], mv=12.0)]
         cfg = SceneConfig(
-            sensor=sensor, stars=stars, targets=targets,
-            seed=42, device="cpu", enable_shot_noise=False, enable_read_noise=False,
+            sensor=sensor,
+            stars=stars,
+            targets=targets,
+            seed=42,
+            device="cpu",
+            enable_shot_noise=False,
+            enable_read_noise=False,
         )
         return cfg
 
@@ -74,16 +90,30 @@ class TestScene:
         """With no targets, target_velocities should be empty list."""
         cfg = SceneConfig(
             sensor=SensorConfig(
-                height=32, width=32, y_fov=0.1, x_fov=0.1,
-                exposure=1.0, num_frames=1, zeropoint=20.0,
-                psf_sigma=1.0, dark_current=5.0, read_noise=8.0,
-                electronic_noise=3.0, background_mv=20.0, bias=100.0,
-                gain=4.0, fwc=50000.0, a2d_bias=200.0, a2d_dtype="uint16",
+                height=32,
+                width=32,
+                y_fov=0.1,
+                x_fov=0.1,
+                exposure=1.0,
+                num_frames=1,
+                zeropoint=20.0,
+                psf_sigma=1.0,
+                dark_current=5.0,
+                read_noise=8.0,
+                electronic_noise=3.0,
+                background_mv=20.0,
+                bias=100.0,
+                gain=4.0,
+                fwc=50000.0,
+                a2d_bias=200.0,
+                a2d_dtype="uint16",
             ),
             stars=StarFieldConfig(mode="bins", mv_bins=[12, 13], density=[5.0]),
             targets=[],
-            seed=42, device="cpu",
-            enable_shot_noise=False, enable_read_noise=False,
+            seed=42,
+            device="cpu",
+            enable_shot_noise=False,
+            enable_read_noise=False,
         )
         scene = Scene(cfg)
         _, meta = scene.render(0)
@@ -107,11 +137,23 @@ class TestScene:
         """Scene.from_yaml should load and render."""
         config_data = {
             "sensor": {
-                "height": 32, "width": 32, "y_fov": 0.1, "x_fov": 0.1,
-                "exposure": 1.0, "num_frames": 2, "zeropoint": 20.0,
-                "psf_sigma": 1.0, "dark_current": 5.0, "read_noise": 8.0,
-                "electronic_noise": 3.0, "background_mv": 20.0, "bias": 100.0,
-                "gain": 4.0, "fwc": 50000.0, "a2d_bias": 200.0, "a2d_dtype": "uint16",
+                "height": 32,
+                "width": 32,
+                "y_fov": 0.1,
+                "x_fov": 0.1,
+                "exposure": 1.0,
+                "num_frames": 2,
+                "zeropoint": 20.0,
+                "psf_sigma": 1.0,
+                "dark_current": 5.0,
+                "read_noise": 8.0,
+                "electronic_noise": 3.0,
+                "background_mv": 20.0,
+                "bias": 100.0,
+                "gain": 4.0,
+                "fwc": 50000.0,
+                "a2d_bias": 200.0,
+                "a2d_dtype": "uint16",
             },
             "stars": {
                 "mode": "bins",
@@ -152,21 +194,37 @@ class TestScene:
         """Stars should shift between frames when star_motion.translation is set."""
         cfg = SceneConfig(
             sensor=SensorConfig(
-                height=64, width=64, y_fov=0.1, x_fov=0.1,
-                exposure=1.0, gap=0.0, num_frames=3, zeropoint=20.0,
-                psf_sigma=1.0, dark_current=0.0, read_noise=0.0,
-                electronic_noise=0.0, background_mv=30.0, bias=0.0,
-                gain=1.0, fwc=1e9, a2d_bias=0.0, a2d_dtype="uint16",
+                height=64,
+                width=64,
+                y_fov=0.1,
+                x_fov=0.1,
+                exposure=1.0,
+                gap=0.0,
+                num_frames=3,
+                zeropoint=20.0,
+                psf_sigma=1.0,
+                dark_current=0.0,
+                read_noise=0.0,
+                electronic_noise=0.0,
+                background_mv=30.0,
+                bias=0.0,
+                gain=1.0,
+                fwc=1e9,
+                a2d_bias=0.0,
+                a2d_dtype="uint16",
             ),
             stars=StarFieldConfig(
-                mv_bins=[10, 11], density=[50.0],
+                mv_bins=[10, 11],
+                density=[50.0],
             ),
             star_motion=StarMotionConfig(
                 translation=[5.0, 0.0],  # 5 px/sec drift in row
                 temporal_osf=1,  # no within-frame blur, just inter-frame shift
             ),
-            seed=99, device="cpu",
-            enable_shot_noise=False, enable_read_noise=False,
+            seed=99,
+            device="cpu",
+            enable_shot_noise=False,
+            enable_read_noise=False,
         )
         scene = Scene(cfg)
         img0, _ = scene.render(0)
@@ -180,18 +238,34 @@ class TestScene:
         """Target should be visible and move between frames."""
         cfg = SceneConfig(
             sensor=SensorConfig(
-                height=64, width=64, y_fov=0.1, x_fov=0.1,
-                exposure=1.0, gap=0.0, num_frames=4, zeropoint=20.0,
-                psf_sigma=1.0, dark_current=0.0, read_noise=0.0,
-                electronic_noise=0.0, background_mv=30.0, bias=0.0,
-                gain=1.0, fwc=1e9, a2d_bias=0.0, a2d_dtype="uint16",
+                height=64,
+                width=64,
+                y_fov=0.1,
+                x_fov=0.1,
+                exposure=1.0,
+                gap=0.0,
+                num_frames=4,
+                zeropoint=20.0,
+                psf_sigma=1.0,
+                dark_current=0.0,
+                read_noise=0.0,
+                electronic_noise=0.0,
+                background_mv=30.0,
+                bias=0.0,
+                gain=1.0,
+                fwc=1e9,
+                a2d_bias=0.0,
+                a2d_dtype="uint16",
             ),
             stars=StarFieldConfig(
-                mv_bins=[18, 19], density=[0.0],  # no stars
+                mv_bins=[18, 19],
+                density=[0.0],  # no stars
             ),
             targets=[TargetConfig(origin=[0.5, 0.5], velocity=[10.0, 0.0], mv=10.0)],
-            seed=42, device="cpu",
-            enable_shot_noise=False, enable_read_noise=False,
+            seed=42,
+            device="cpu",
+            enable_shot_noise=False,
+            enable_read_noise=False,
         )
         scene = Scene(cfg)
         img0, meta0 = scene.render(0)

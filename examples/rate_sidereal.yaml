@@ -15,13 +15,13 @@ mode: rate_sidereal
 sidereal_start: 6        # frames 0-5 rate-track, 6-7 sidereal
 
 sensor:
-  height: 512
-  width: 512
-  y_fov: 0.5
-  x_fov: 0.5
+  height: 2048
+  width: 2048
+  y_fov: 1.0
+  x_fov: 1.0
   exposure: 2.0
   gap: 0.5
-  num_frames: 8
+  num_frames: 10
   zeropoint: 23.5
   psf_sigma: 0.6
   dark_current: 1.0
@@ -35,9 +35,7 @@ sensor:
   a2d_dtype: uint16
 
 stars:
-  mode: bins
-  mv_bins: [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18]
-  density: [0.04, 0.10, 0.67, 2.48, 5.0, 10.27, 24.33, 35.19, 60.02, 110.1, 180.3, 285.5]
+  mode: sstr7
 
 # Star motion defines the tracking rate (sensor slews at this rate).
 # Stars streak at this rate in rate-track frames, are stationary in sidereal.

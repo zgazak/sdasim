@@ -1,6 +1,7 @@
 """sdasim — Speed-optimized differentiable satellite scene simulator."""
 
 from sdasim._version import __version__
+from sdasim.batch import BatchRenderResult, render_scene_batch
 from sdasim.config import (
     SceneConfig,
     SensorConfig,
@@ -10,17 +11,22 @@ from sdasim.config import (
     load_config,
 )
 from sdasim.device import get_device, resolve_device, set_device
+from sdasim.empirical import (
+    EmpiricalNoise,
+    EmpiricalPSF,
+    render_frame_empirical,
+)
 from sdasim.fpa import analog_to_digital, eod_to_sigma, mv_to_pe, pe_to_mv
 from sdasim.noise import gaussian_noise, poisson_noise
-from sdasim.batch import BatchRenderResult, render_scene_batch
 from sdasim.render import expand_motion, render_frame
 from sdasim.scene import Scene
 from sdasim.splat import (
+    splat_elliptical_gaussian_batched,
     splat_gaussians,
     splat_gaussians_batched,
     splat_moffat_batched,
-    splat_elliptical_gaussian_batched,
 )
+
 
 def __getattr__(name: str):
     if name == "io":
@@ -62,6 +68,10 @@ __all__ = [
     "expand_motion",
     "render_scene_batch",
     "BatchRenderResult",
+    # Empirical (opt-in)
+    "EmpiricalPSF",
+    "EmpiricalNoise",
+    "render_frame_empirical",
     # Scene
     "Scene",
     # Config

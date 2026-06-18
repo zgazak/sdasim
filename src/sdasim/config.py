@@ -32,6 +32,26 @@ class SensorConfig:
     fwc: float = 100000.0
     a2d_bias: float = 500.0
     a2d_dtype: str = "uint16"
+    # --- empirical (opt-in) rendering; defaults preserve the Gaussian/basic path ---
+    psf_model: str = "gaussian"  # {"gaussian", "empirical"}
+    noise_model: str = "basic"  # {"basic", "empirical"}
+    empirical_psf_path: str | None = None  # path to psf_basis.npz
+    empirical_noise_path: str | None = None  # path to noise_model.json
+    empirical_streak_path: str | None = None  # path to streak_model.json (along-track texture)
+    psf_param_scale: float = (
+        1.0  # sample size/ellipticity from real dist; >1 extrapolates; 0 = mean PSF
+    )
+    psf_speckle_amp: float = 0.0  # atmospheric-boiling streak STRUCTURE amplitude (0 = off)
+    speckle_corr_px: float = 4.0  # along-track correlation length of the speckle boil
+    speckle_modes: int = 6  # number of eigen-PSF modes used for speckle
+    apply_rowcol_median: bool = True  # row/col-median subtract (senpai stage). A FULL-FRAME op;
+    #                                      set False when rendering a small patch/cutout (else an
+    #                                      axis-aligned streak digs a trench in the patch median).
+    streak_param_sample: bool = False  # draw streak intensity/wobble amplitudes per render from
+    #                                      the measured distributions (streak_model.json dist_*)
+    streak_param_extend: float = (
+        1.0  # std multiplier for that sampling (covers + extends past measured)
+    )
 
 
 @dataclass
@@ -42,7 +62,18 @@ class StarFieldConfig:
     )
     density: list[float] = field(
         default_factory=lambda: [
-            0.04, 0.10, 0.67, 2.48, 5.0, 10.27, 24.33, 35.19, 60.02, 110.1, 180.3, 285.5,
+            0.04,
+            0.10,
+            0.67,
+            2.48,
+            5.0,
+            10.27,
+            24.33,
+            35.19,
+            60.02,
+            110.1,
+            180.3,
+            285.5,
         ]
     )
     # For catalog modes (sstr7/gaia)
@@ -80,6 +111,7 @@ class SceneConfig:
     enable_read_noise: bool = True
     mode: str | None = None
     sidereal_start: int | None = None
+    obs_time: str | None = None  # ISO start time, e.g. "2024-01-01T00:00:00"
 
 
 _NESTED_TYPES: dict[str, type] = {}
@@ -88,12 +120,14 @@ _NESTED_TYPES: dict[str, type] = {}
 def _init_nested_types() -> None:
     """Populate the nested type lookup (called after all dataclasses are defined)."""
     if not _NESTED_TYPES:
-        _NESTED_TYPES.update({
-            "SensorConfig": SensorConfig,
-            "StarFieldConfig": StarFieldConfig,
-            "StarMotionConfig": StarMotionConfig,
-            "TargetConfig": TargetConfig,
-        })
+        _NESTED_TYPES.update(
+            {
+                "SensorConfig": SensorConfig,
+                "StarFieldConfig": StarFieldConfig,
+                "StarMotionConfig": StarMotionConfig,
+                "TargetConfig": TargetConfig,
+            }
+        )
 
 
 # Map field names to their nested dataclass types

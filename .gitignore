@@ -205,3 +205,14 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Local render output
+test_render/
+output/
+calib/
+
+# Scratch / calibration work area (internal data paths, not for distribution)
+temp/
+
+# Claude Code local settings
+.claude/settings.local.json

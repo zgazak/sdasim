@@ -1,7 +1,9 @@
 """Focal plane array utilities: A/D conversion, magnitude/PE conversions.
 
-Ports satsim's image/fpa.py analog_to_digital, mv_to_pe, pe_to_mv
-and image/psf.py eod_to_sigma.
+Standard astronomical photometry relations: magnitude <-> photoelectron flux on
+the Pogson scale (mv_to_pe / pe_to_mv), a bias -> full-well-clip -> gain -> floor
+ADC pipeline (analog_to_digital), and the erfinv-based energy-on-detector to
+Gaussian-sigma conversion (eod_to_sigma).
 """
 
 from __future__ import annotations

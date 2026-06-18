@@ -8,10 +8,10 @@
 #   sdasim.io.write_sequence(images, annotations, "output/rate_track/")
 
 sensor:
-  height: 512
-  width: 512
-  y_fov: 0.5          # degrees
-  x_fov: 0.5
+  height: 8192
+  width: 8192
+  y_fov: 2.0          # degrees
+  x_fov: 2.0
   exposure: 2.0        # seconds — long exposure to collect photons
   gap: 0.5             # inter-frame gap (seconds)
   num_frames: 8
