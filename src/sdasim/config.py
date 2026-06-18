@@ -80,6 +80,7 @@ class SceneConfig:
     enable_read_noise: bool = True
     mode: str | None = None
     sidereal_start: int | None = None
+    obs_time: str | None = None  # ISO start time, e.g. "2024-01-01T00:00:00"
 
 
 _NESTED_TYPES: dict[str, type] = {}

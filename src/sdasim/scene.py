@@ -268,6 +268,18 @@ class Scene:
                 if target_velocities is not None else []
             ),  # [[row_rate, col_rate], ...] px/sec
             "exposure": sensor.exposure,  # seconds
+            "obs_time": self.config.obs_time,
+            "gain": sensor.gain,
+            "read_noise": sensor.read_noise,
+            "dark_current": sensor.dark_current,
+            "y_fov": sensor.y_fov,
+            "x_fov": sensor.x_fov,
+            "gap": sensor.gap,
+            "psf_sigma": float(psf_sigma) if not isinstance(psf_sigma, float) else psf_sigma,
+            "zeropoint": sensor.zeropoint,
+            "a2d_dtype": sensor.a2d_dtype,
+            "_height": sensor.height,
+            "_width": sensor.width,
         }
 
         return digital, metadata
