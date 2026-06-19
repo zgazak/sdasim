@@ -14,7 +14,7 @@ import numpy as np
 import torch
 from torch import Tensor
 
-from sdasim.config import SceneConfig, load_config
+from sdasim.config import SceneConfig, TargetConfig, load_config
 from sdasim.device import resolve_device
 from sdasim.empirical import (
     BasicWhiteNoise,
@@ -83,6 +83,7 @@ class Scene:
         self.config = config
         self.device = resolve_device(config.device)
         self.sensor = config.sensor
+        self._object_states = None
 
         # Validate mode
         if config.mode == "rate_sidereal" and config.sidereal_start is None:
@@ -92,8 +93,12 @@ class Scene:
         if config.seed is not None:
             torch.manual_seed(config.seed)
 
-        # Load stars (slow, one-time)
-        self._load_stars(config)
+        # Orbital mechanics mode: objects present → derive everything from TLEs
+        if config.objects:
+            self._init_from_objects(config)
+        else:
+            # Load stars (slow, one-time)
+            self._load_stars(config)
 
         # Pre-compute background PE per pixel
         bg_pe_per_sec = mv_to_pe(self.sensor.zeropoint, self.sensor.background_mv)
@@ -174,10 +179,10 @@ class Scene:
                 seed=config.seed,
                 device=self.device,
             )
-        elif sc.mode == "sstr7":
-            from sdasim.stars import load_sstr7
+        elif sc.mode == "sstrc7":
+            from sdasim.stars import load_sstrc7
 
-            self.star_positions, self.star_intensities = load_sstr7(
+            self.star_positions, self.star_intensities = load_sstrc7(
                 height=sensor.height,
                 width=sensor.width,
                 y_fov=sensor.y_fov,
@@ -189,10 +194,93 @@ class Scene:
                 exposure=sensor.exposure,
                 catalog_path=sc.catalog_path,
                 pad_mult=sc.pad_mult,
+                mv_max=sc.mv_max,
                 device=self.device,
             )
         else:
             raise ValueError(f"Unknown star mode: {sc.mode}")
+
+    def _init_from_objects(self, config: SceneConfig) -> None:
+        """Initialize scene from orbital objects (TLE-based physics mode).
+
+        Fetches TLEs, propagates orbits, derives pointing/star field,
+        and populates star motion + target configs from orbital mechanics.
+        """
+        from datetime import datetime, timezone
+
+        from sdasim.orbits import compute_object_states
+
+        # Parse observation time
+        if config.obs_time:
+            obs_time = datetime.fromisoformat(config.obs_time.replace("Z", "+00:00"))
+        else:
+            obs_time = datetime.now(timezone.utc)
+
+        # Compute orbital states
+        states = compute_object_states(
+            config.objects, config.site, config.sensor, obs_time,
+        )
+        self._object_states = states
+
+        primary = states[0]
+        tracking = config.tracking or "rate_track"
+
+        # Set star field pointing from primary target.
+        # In rate_track mode, shift the star field center backward by half an
+        # exposure so that streak centroids (at mid-exposure) align with the
+        # satellite at image center (which is at the start-of-exposure position).
+        if tracking == "rate_track":
+            import math
+            half_exp = config.sensor.exposure / 2.0
+            config.stars.ra = primary.ra - math.degrees(primary.ra_rate) * half_exp
+            config.stars.dec = primary.dec - math.degrees(primary.dec_rate) * half_exp
+        else:
+            config.stars.ra = primary.ra
+            config.stars.dec = primary.dec
+
+        # Load star field for derived pointing
+        self._load_stars(config)
+
+        # Configure star motion based on tracking mode
+        if tracking == "rate_track":
+            # Stars appear to move opposite to primary target's motion
+            config.star_motion.translation = [-primary.row_rate, -primary.col_rate]
+        elif tracking == "sidereal":
+            # Stars are stationary, targets streak
+            config.star_motion.translation = [0.0, 0.0]
+            config.star_motion.temporal_osf = 1
+        else:
+            raise ValueError(f"Unknown tracking mode: {tracking!r}")
+
+        # Convert object states to target configs
+        targets = []
+        for i, st in enumerate(states):
+            if tracking == "rate_track":
+                if i == 0:
+                    # Primary is tracked → zero velocity
+                    vel = [0.0, 0.0]
+                else:
+                    # Secondary velocity relative to primary
+                    vel = [
+                        st.row_rate - primary.row_rate,
+                        st.col_rate - primary.col_rate,
+                    ]
+            else:
+                # Sidereal: full pixel rate
+                vel = [st.row_rate, st.col_rate]
+
+            origin = [
+                st.pixel_row / config.sensor.height,
+                st.pixel_col / config.sensor.width,
+            ]
+            targets.append(TargetConfig(
+                mode="line",
+                origin=origin,
+                velocity=vel,
+                mv=st.mv,
+            ))
+
+        config.targets = targets
 
     def render(self, frame_idx: int = 0, **overrides: Any) -> tuple[Tensor, dict]:
         """Render a single frame -> (digital_image, metadata_dict)."""
@@ -292,6 +380,8 @@ class Scene:
         if target_velocities.shape[0] == 0:
             target_velocities = None
 
+        defer_read_noise = overrides.get("defer_read_noise", False)
+
         use_empirical = sensor.psf_model == "empirical" or sensor.noise_model == "empirical"
         psf_params = None
         tex_used = None
@@ -368,6 +458,7 @@ class Scene:
                 a2d_dtype=sensor.a2d_dtype,
                 enable_shot_noise=self.config.enable_shot_noise,
                 enable_read_noise=self.config.enable_read_noise,
+                defer_read_noise=defer_read_noise,
                 star_velocity=star_vel,
                 star_rotation=star_rot,
                 target_velocities=target_velocities,

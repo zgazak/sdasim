@@ -1,6 +1,6 @@
 """Star catalog generation.
 
-Supports random bins (built-in), SSTR7, and Gaia (require astropy).
+Supports random bins (built-in), SSTRC7, and Gaia (require astropy).
 """
 
 from __future__ import annotations
@@ -102,7 +102,7 @@ def generate_random_stars(
     return positions, intensities
 
 
-def load_sstr7(
+def load_sstrc7(
     height: int,
     width: int,
     y_fov: float,
@@ -114,6 +114,7 @@ def load_sstr7(
     exposure: float,
     catalog_path: str | None = None,
     pad_mult: float = 1.0,
+    mv_max: float | None = None,
     device: str | torch.device | None = None,
 ) -> tuple[Tensor, Tensor]:
     """Load stars from SSTRC7 catalog. Requires astropy.
@@ -127,12 +128,13 @@ def load_sstr7(
         exposure: Exposure time in seconds.
         catalog_path: Path to SSTRC7 catalog directory.
         pad_mult: Padding multiplier.
+        mv_max: Optional faint-end magnitude cut (drop stars fainter than this).
         device: Target device.
 
     Returns:
         (positions, intensities): (M, 2) row/col, (M,) PE counts.
     """
-    from sdasim.sstr7 import query_by_los
+    from sdasim.sstrc7 import query_by_los
 
     dev = resolve_device(device)
 
@@ -150,6 +152,14 @@ def load_sstr7(
         kwargs["rootPath"] = catalog_path
 
     rr, cc, mv = query_by_los(**kwargs)
+
+    # Optional faint-end magnitude cut (orbital mode passes mv_max).
+    if mv_max is not None:
+        mv = np.asarray(mv)
+        keep = mv <= mv_max
+        rr = np.asarray(rr)[keep]
+        cc = np.asarray(cc)[keep]
+        mv = mv[keep]
 
     pe = np.array([mv_to_pe(zeropoint, float(m)) * exposure for m in mv])
     positions = torch.tensor(

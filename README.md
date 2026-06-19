@@ -30,8 +30,9 @@ pip install -e ".[dev]"
 
 **Required dependencies (3 total):** `torch>=2.2`, `numpy>=1.26`, `pyyaml>=6.0`
 
-**Optional:** `astropy` (SSTR7/Gaia catalogs, FITS output), `satsim` (config converter),
-`[calibrate]` extra = `astropy`+`scipy`+`matplotlib` (empirical-mode calibration; see
+**Optional:** `astropy` (SSTRC7/Gaia catalogs, FITS output), `satsim` (config converter),
+`[orbital]` extra = `satkit`+`httpx` (TLE-based orbital scene mode), `[calibrate]` extra =
+`astropy`+`scipy`+`matplotlib` (empirical-mode calibration; see
 [Empirical rendering](#empirical-data-calibrated-rendering--for-sim-to-real-pretraining))
 
 ## Quick start
@@ -214,7 +215,7 @@ sensor:
   a2d_dtype: uint16          # output dtype
 
 stars:
-  mode: bins                 # "bins" (random), "sstr7", or "gaia"
+  mode: bins                 # "bins" (random), "sstrc7", or "gaia"
   mv_bins: [6, 7, ..., 18]  # N+1 magnitude bin edges
   density: [0.04, ..., 285] # N star densities (stars/deg^2/bin)
 
@@ -259,12 +260,14 @@ src/sdasim/
   config.py      # Flat dataclasses + YAML loader
   noise.py       # Differentiable Poisson (STE) + Gaussian (reparam)
   fpa.py         # A/D, mv<->pe, eod_to_sigma
-  stars.py       # Star catalogs: random bins, SSTR7, Gaia
+  sstrc7.py      # Native SSTRC7 catalog reader
+  stars.py       # Star catalogs: random bins, SSTRC7, Gaia
   targets.py     # Target trajectories
   sampler.py     # Random scene generation (+ SceneDistribution.from_calibration)
   batch.py       # Batched multi-scene rendering (Gaussian fused + empirical)
   device.py      # GPU-first device management
   io.py          # Optional FITS/JSON writers
+  orbits.py      # TLE fetch + SGP4 propagation -> RA/Dec + pixel rates (orbital mode)
   _compat.py     # satsim config converter
   # --- empirical (data-calibrated) mode ---
   empirical.py   # measured PSF + noise + 4-component streak texture renderer

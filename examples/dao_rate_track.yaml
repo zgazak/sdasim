@@ -1,0 +1,58 @@
+# Rate-track mode: sensor tracks the target, so the target is ~stationary
+# and stars streak across the frame during exposure.
+#
+# Usage:
+#   import sdasim
+#   scene = sdasim.Scene.from_yaml("examples/rate_track.yaml")
+#   images, annotations = scene.render_sequence()
+#   sdasim.io.write_sequence(images, annotations, "output/rate_track/")
+
+sensor:
+  height: 8120
+  width: 8120
+  y_fov: 2.05          # degrees
+  x_fov: 2.05
+  exposure: 4.0        # seconds — long exposure to collect photons
+  gap: 0.5             # inter-frame gap (seconds)
+  num_frames: 1
+  zeropoint: 23.5
+  psf_sigma: 2       # pixels (Gaussian PSF width)
+  dark_current: 0.15   # e-/pixel/sec
+  read_noise: 0.8     # e- RMS
+  electronic_noise: 0.0
+  background_mv: 19.0  # mag/arcsec^2 equivalent
+  bias: 50.0           # e-
+  gain: 1            # e-/DN
+  fwc: 100000.0        # full-well capacity (e-)
+  a2d_bias: 500.0      # DN
+  a2d_dtype: uint16
+
+stars:
+  mode: bins
+  mv_bins: [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18]
+  density: [0.04, 0.10, 0.67, 2.48, 5.0, 10.27, 24.33, 35.19, 60.02, 110.1, 180.3, 285.5]
+
+# Stars move because the sensor is tracking the target (rate-track).
+# This creates star streaks. translation is [row, col] in pixels/sec.
+star_motion:
+  rotation: 0.0
+  translation: [3.0, -5.0]   # stars drift at ~5.8 px/sec relative to sensor
+  temporal_osf: 100           # 100 sub-steps for smooth motion blur
+
+# Target is nearly stationary in rate-track mode (sensor follows it).
+# Small residual drift from imperfect tracking.
+targets:
+  - mode: line
+    origin: [0.5, 0.5]         # start at image center (fractional coords)
+    velocity: [0.2, -0.1]      # slight residual drift (px/sec)
+    mv: 14.0                   # dim RSO
+
+  - mode: line
+    origin: [0.3, 0.7]
+    velocity: [0.1, 0.0]
+    mv: 12.0                   # brighter RSO
+
+seed: 42
+device: auto
+enable_shot_noise: true
+enable_read_noise: true

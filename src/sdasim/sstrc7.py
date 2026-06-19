@@ -1,6 +1,6 @@
 """SSTRC7 star catalog reader.
 
-Ported from senpai.catalog.sstr7 — provides query_by_los() for rendering
+Ported from senpai.catalog.sstrc7 — provides query_by_los() for rendering
 star fields from the SSTRC7 binary catalog.
 
 The catalog uses zone-indexed binary files:
@@ -18,9 +18,9 @@ from functools import lru_cache
 import numpy as np
 from astropy import wcs
 
-# SSTRC7 catalog location. Override with the SDASIM_SSTR7_PATH environment
+# SSTRC7 catalog location. Override with the SDASIM_SSTRC7_PATH environment
 # variable, or by passing `catalog_path` in the scene config.
-DEFAULT_SSTR7_PATH = os.environ.get("SDASIM_SSTR7_PATH", "sstrc7")
+DEFAULT_SSTRC7_PATH = os.environ.get("SDASIM_SSTRC7_PATH", "sstrc7")
 
 RECORD_LEN = 30  # 30 unsigned shorts = 60 bytes
 RECORD_LEN_BYTES = RECORD_LEN * 2
@@ -224,7 +224,7 @@ def query_by_min_max(
     ra_max: float,
     dec_min: float,
     dec_max: float,
-    rootPath: str = DEFAULT_SSTR7_PATH,
+    rootPath: str = DEFAULT_SSTRC7_PATH,
     clip_min_max: bool = True,
     filter_center: float | None = None,
 ):
@@ -353,7 +353,7 @@ def query_by_los(
     ra: float,
     dec: float,
     rot: float = 0.0,
-    rootPath: str = DEFAULT_SSTR7_PATH,
+    rootPath: str = DEFAULT_SSTRC7_PATH,
     pad_mult: float = 0.0,
     origin: str = "center",
     filter_ob: bool = True,
