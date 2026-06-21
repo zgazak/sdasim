@@ -9,12 +9,28 @@ import math
 from dataclasses import dataclass
 from datetime import datetime
 from functools import lru_cache
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import numpy as np
 
 if TYPE_CHECKING:
-    from sdasim.config import ObjectConfig, SensorConfig, SiteConfig
+    from sdasim.config import CatalogConfig, ObjectConfig, SensorConfig, SiteConfig
+
+
+# WGS84 equatorial radius (cylindrical-umbra shadow test) and the Sun's apparent
+# visual magnitude (Lambertian-sphere photometry, matches simple-snr-calc).
+R_EARTH = 6378137.0
+SUN_MV = -26.74
+# Earth's sidereal rotation rate [rad/s] (IAU/WGS84). The observer's velocity
+# (Omega x r_obs) is subtracted when forming apparent angular rates: it is not
+# negligible for high orbits -- ~1.7"/s (~11% of the rate) for GEO.
+OMEGA_EARTH = 7.2921159e-5
+# Refetch the full Space-Track catalog at most once per day.
+_MAX_AGE_HOURS = 24.0
+# Representative optical diameter [m] per Space-Track RCS_SIZE bucket. RCS is a
+# radar quantity, so these are deliberately coarse population proxies, not truth.
+_RCS_DIAMETER = {"SMALL": 0.3, "MEDIUM": 0.8, "LARGE": 2.5}
 
 
 @dataclass
@@ -126,11 +142,17 @@ def propagate(
         longitude_deg=site.longitude,
         altitude=site.altitude,
     )
-    obs_gcrf = satkit.frametransform.qitrf2gcrf(t) * obs_itrf.vector
+    obs_gcrf = np.asarray(
+        satkit.frametransform.qitrf2gcrf(t) * obs_itrf.vector, dtype=float
+    ).reshape(3)
 
-    # Topocentric vector
-    topo = pos_gcrf - obs_gcrf
-    topo_vel = vel_gcrf  # observer velocity negligible for angular rates
+    # Topocentric position and velocity, relative to the inertial star field.
+    # The observer's own velocity (Earth rotation, Omega x r_obs) is NOT
+    # negligible for the apparent angular rate of high orbits -- for GEO it is
+    # ~1.7"/s (~11% of the rate) -- so subtract it from the satellite velocity.
+    obs_vel = np.cross([0.0, 0.0, OMEGA_EARTH], obs_gcrf)
+    topo = np.asarray(pos_gcrf, dtype=float).reshape(3) - obs_gcrf
+    topo_vel = np.asarray(vel_gcrf, dtype=float).reshape(3) - obs_vel
 
     # Convert to RA/Dec
     range_m = float(np.linalg.norm(np.array(topo)))
@@ -407,3 +429,300 @@ def compute_object_states(
         ))
 
     return states
+
+
+# ---------------------------------------------------------------------------
+# Catalog discovery: auto-stream field satellites through the FOV
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class LoadedCatalog:
+    """A parsed TLE catalog plus a per-object optical diameter [m]."""
+
+    tles: list  # list[satkit.TLE]
+    diameters: np.ndarray  # (N,) meters, aligned to tles
+
+
+@dataclass
+class StreakState:
+    """A discovered satellite streak on the focal plane (sensor frame)."""
+
+    pixel_row: float
+    pixel_col: float
+    row_rate: float  # px/s, apparent (sensor frame)
+    col_rate: float  # px/s
+    mv: float
+    range_m: float
+
+
+# In-process cache keyed by (path, mtime, default_diameter) so per-exposure Scene
+# rebuilds don't re-parse the 30k-object catalog.
+_CAT_CACHE: dict = {}
+
+
+def _cache_dir() -> Path:
+    """OS-agnostic temp dir for Space-Track caches (stable name → cache hits)."""
+    import tempfile
+
+    d = Path(tempfile.gettempdir()) / "sdasim"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _load_creds(env_path: str | None) -> tuple[str, str]:
+    """Resolve Space-Track credentials from the environment or a .env file.
+
+    Real environment variables take precedence; a .env file (``env_path`` or a
+    ``.env`` in the cwd) is used as a fallback.
+    """
+    import os
+
+    env: dict[str, str] = {}
+    for cand in ([env_path] if env_path else [".env"]):
+        if cand and Path(cand).expanduser().exists():
+            for line in Path(cand).expanduser().read_text().splitlines():
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                k, v = line.split("=", 1)
+                env[k.strip()] = v.strip().strip('"').strip("'")
+
+    ident = os.environ.get("SPACETRACK_USERNAME") or env.get("SPACETRACK_USERNAME")
+    pw = os.environ.get("SPACETRACK_PASSWORD") or env.get("SPACETRACK_PASSWORD")
+    if not ident or not pw:
+        raise ValueError(
+            "Space-Track credentials not found; set SPACETRACK_USERNAME and "
+            "SPACETRACK_PASSWORD in the environment or a .env file"
+        )
+    return ident, pw
+
+
+def _spacetrack_fetch(env_path: str | None) -> Path:
+    """Ensure a fresh Space-Track GP cache exists; return its path.
+
+    Re-downloads only when the cache is older than ``_MAX_AGE_HOURS``. The SATCAT
+    (for RCS_SIZE → diameter) is fetched best-effort alongside it.
+    """
+    import time
+
+    import httpx
+
+    gp_path = _cache_dir() / "spacetrack_gp.3le"
+    if gp_path.exists() and (time.time() - gp_path.stat().st_mtime) < _MAX_AGE_HOURS * 3600:
+        return gp_path
+
+    ident, pw = _load_creds(env_path)
+    base = "https://www.space-track.org"
+    with httpx.Client(timeout=120.0) as c:
+        login = c.post(f"{base}/ajaxauth/login", data={"identity": ident, "password": pw})
+        login.raise_for_status()
+        gp = c.get(
+            f"{base}/basicspacedata/query/class/gp/decay_date/null-val/"
+            "epoch/%3Enow-30/orderby/norad_cat_id/format/3le"
+        )
+        gp.raise_for_status()
+        gp_path.write_text(gp.text)
+        try:
+            sc = c.get(
+                f"{base}/basicspacedata/query/class/satcat/DECAY/null-val/CURRENT/Y/"
+                "orderby/NORAD_CAT_ID/format/csv"
+            )
+            sc.raise_for_status()
+            (_cache_dir() / "spacetrack_satcat.csv").write_text(sc.text)
+        except Exception:
+            pass  # diameters fall back to the configured default
+
+    return gp_path
+
+
+def _diameters_for(tles: list, default_diameter: float) -> np.ndarray:
+    """Per-object optical diameter [m] from the cached SATCAT RCS_SIZE buckets."""
+    import csv
+
+    diam = np.full(len(tles), float(default_diameter))
+    sc_path = _cache_dir() / "spacetrack_satcat.csv"
+    if not sc_path.exists():
+        return diam
+
+    sizes: dict[int, float] = {}
+    with open(sc_path, newline="") as f:
+        for row in csv.DictReader(f):
+            bucket = (row.get("RCS_SIZE") or "").strip().upper()
+            if bucket in _RCS_DIAMETER:
+                try:
+                    sizes[int(row["NORAD_CAT_ID"])] = _RCS_DIAMETER[bucket]
+                except (KeyError, ValueError):
+                    continue
+
+    for i, tle in enumerate(tles):
+        d = sizes.get(int(tle.satnum))
+        if d:
+            diam[i] = d
+    return diam
+
+
+def load_catalog(cfg: CatalogConfig) -> LoadedCatalog:
+    """Load (and cache) the TLE catalog described by a CatalogConfig.
+
+    ``cfg.source == "spacetrack"`` fetches the full GP catalog (daily cache);
+    any other value is treated as a path to a local 2-/3-line file.
+    """
+    import satkit
+
+    if cfg.source == "spacetrack":
+        path = _spacetrack_fetch(cfg.env_path)
+    else:
+        path = Path(cfg.source).expanduser()
+
+    key = (str(path), path.stat().st_mtime, float(cfg.default_diameter))
+    if key not in _CAT_CACHE:
+        tles = satkit.TLE.from_file(str(path))
+        if not isinstance(tles, list):
+            tles = [tles]
+        _CAT_CACHE[key] = LoadedCatalog(tles, _diameters_for(tles, cfg.default_diameter))
+    return _CAT_CACHE[key]
+
+
+def _phase_angle_factor(phi_rad: np.ndarray) -> np.ndarray:
+    """Lambertian-sphere phase factor (Tousey/Sussman); matches simple-snr-calc."""
+    return (2.0 / (3.0 * np.pi**2)) * (np.sin(phi_rad) + (np.pi - phi_rad) * np.cos(phi_rad))
+
+
+def discover_streaks(
+    catalog: LoadedCatalog,
+    obs_time: datetime,
+    site: SiteConfig,
+    sensor: SensorConfig,
+    point_ra: float,
+    point_dec: float,
+    mount_ra_rate: float,  # rad/s, inertial (0 == sidereal)
+    mount_dec_rate: float,  # rad/s
+    albedo: float,
+    psf_pad_px: float,
+) -> list[StreakState]:
+    """Find sunlit satellites whose streak touches the FOV at ``obs_time``.
+
+    Propagates the whole catalog at one epoch (vectorized), keeps objects whose
+    streak segment intersects the PSF-padded frame, are above the horizon and
+    are not eclipsed, then returns them as sensor-frame line targets.
+    """
+    import satkit
+
+    from sdasim.sstrc7 import _get_wcs
+
+    tm = satkit.time(
+        obs_time.year, obs_time.month, obs_time.day,
+        obs_time.hour, obs_time.minute,
+        obs_time.second + obs_time.microsecond / 1e6,
+    )
+
+    # Observer + Sun in GCRF (meters)
+    obs_itrf = satkit.itrfcoord(
+        latitude_deg=site.latitude, longitude_deg=site.longitude, altitude=site.altitude,
+    )
+    obs_g = np.asarray(satkit.frametransform.qitrf2gcrf(tm) * obs_itrf.vector, float).reshape(3)
+    sun_g = np.asarray(satkit.sun.pos_gcrf(tm), float).reshape(3)
+
+    # Propagate the whole catalog at this epoch (vectorized); velocity comes free.
+    # Rotate TEME->GCRF with the quaternion's rotation MATRIX and matmul: `q * arr`
+    # does NOT apply the rotation row-wise for an (N, 3) array (it only rotates a
+    # single 3-vector correctly). satkit squeezes the single-TLE case to 1-D, so
+    # force (N, 3) first.
+    p_teme, v_teme = satkit.sgp4(catalog.tles, tm)
+    rot = np.asarray(satkit.frametransform.qteme2gcrf(tm).as_rotation_matrix(), float)
+    p_g = np.asarray(p_teme, float).reshape(-1, 3) @ rot.T
+    v_g = np.asarray(v_teme, float).reshape(-1, 3) @ rot.T
+
+    # Subtract the observer's velocity (Earth rotation) so rates are relative to
+    # the inertial star field; non-negligible for high orbits (see propagate()).
+    obs_vel = np.cross([0.0, 0.0, OMEGA_EARTH], obs_g)
+    topo = p_g - obs_g[None, :]
+    v_rel = v_g - obs_vel[None, :]
+    x, y, z = topo[:, 0], topo[:, 1], topo[:, 2]
+    vx, vy, vz = v_rel[:, 0], v_rel[:, 1], v_rel[:, 2]
+
+    rng = np.sqrt(x * x + y * y + z * z)
+    rxy2 = x * x + y * y
+    rxy = np.sqrt(rxy2)
+    ra = np.degrees(np.arctan2(y, x)) % 360.0
+    dec = np.degrees(np.arctan2(z, rxy))
+
+    with np.errstate(divide="ignore", invalid="ignore"):
+        ra_rate = np.where(rxy2 > 0, (x * vy - y * vx) / rxy2, 0.0)
+        dec_rate = np.where(
+            rxy > 0, (vz * rxy2 - z * (x * vx + y * vy)) / (rng * rng * rxy), 0.0
+        )
+
+    # Apparent (sensor-frame) rates = inertial - mount. Sidereal is just mount=0.
+    app_ra_rate = ra_rate - mount_ra_rate
+    app_dec_rate = dec_rate - mount_dec_rate
+    cos_dec = np.cos(np.radians(dec))
+    omega = np.sqrt((app_ra_rate * cos_dec) ** 2 + app_dec_rate**2)  # on-sky rad/s
+
+    # Coarse great-circle cull around the pointing (per-object streak margin).
+    pr, pd = math.radians(point_ra), math.radians(point_dec)
+    dr, dd = np.radians(ra), np.radians(dec)
+    cos_sep = math.sin(pd) * np.sin(dd) + math.cos(pd) * np.cos(dd) * np.cos(dr - pr)
+    sep = np.degrees(np.arccos(np.clip(cos_sep, -1.0, 1.0)))
+
+    fov_r = 0.5 * math.hypot(sensor.x_fov, sensor.y_fov)
+    ifov = 0.5 * (sensor.x_fov / sensor.width + sensor.y_fov / sensor.height)  # deg/px
+    streak_deg = np.degrees(omega * sensor.exposure)
+    keep = sep < (fov_r + streak_deg + psf_pad_px * ifov)
+
+    # Above the local horizon.
+    up = obs_g / np.linalg.norm(obs_g)
+    keep &= (topo @ up) > 0
+
+    # Sunlit only (cylindrical umbra): eclipsed objects are never rendered.
+    sh = sun_g / np.linalg.norm(sun_g)
+    along = p_g @ sh
+    perp = np.linalg.norm(p_g - along[:, None] * sh[None, :], axis=1)
+    keep &= ~((along < 0) & (perp < R_EARTH))
+
+    idx = np.nonzero(keep)[0]
+    if idx.size == 0:
+        return []
+
+    # Apparent magnitude (Lambertian sphere; inverse of radius_from_mv).
+    to_sun = sun_g[None, :] - p_g[idx]
+    to_obs = -topo[idx]
+    cphi = np.sum(to_sun * to_obs, axis=1) / (
+        np.linalg.norm(to_sun, axis=1) * np.linalg.norm(to_obs, axis=1)
+    )
+    paf = _phase_angle_factor(np.arccos(np.clip(cphi, -1.0, 1.0)))
+    r = catalog.diameters[idx] / 2.0
+    mv = SUN_MV - 2.5 * np.log10(
+        np.clip(albedo * paf * np.pi * r * r / (rng[idx] ** 2), 1e-30, None)
+    )
+
+    # Project to pixels (center origin → array index), matching _radec_to_pixel.
+    H, W = sensor.height, sensor.width
+    y_ifov, x_ifov = sensor.y_fov / H, sensor.x_fov / W
+    wcs = _get_wcs(H, W, y_ifov, x_ifov, point_ra, point_dec, 0.0)
+    col, row = wcs.wcs_world2pix(ra[idx], dec[idx], 0)
+    row = np.asarray(row, float) + H / 2.0
+    col = np.asarray(col, float) + W / 2.0
+
+    vrow = app_dec_rate[idx] / math.radians(y_ifov)
+    vcol = app_ra_rate[idx] * cos_dec[idx] / math.radians(x_ifov)
+
+    # Entry/exit: streak-segment bbox vs PSF-padded frame (over-inclusive = safe).
+    r1r = row + vrow * sensor.exposure
+    r1c = col + vcol * sensor.exposure
+    on = (
+        (np.maximum(row, r1r) >= -psf_pad_px)
+        & (np.minimum(row, r1r) <= H + psf_pad_px)
+        & (np.maximum(col, r1c) >= -psf_pad_px)
+        & (np.minimum(col, r1c) <= W + psf_pad_px)
+    )
+
+    return [
+        StreakState(
+            pixel_row=float(row[j]), pixel_col=float(col[j]),
+            row_rate=float(vrow[j]), col_rate=float(vcol[j]),
+            mv=float(mv[j]), range_m=float(rng[idx][j]),
+        )
+        for j in np.nonzero(on)[0]
+    ]

@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import pytest
 import torch
 import yaml
 
 from sdasim.config import SceneConfig, SensorConfig, StarFieldConfig, StarMotionConfig, TargetConfig
+from sdasim.fpa import mv_to_pe
 from sdasim.scene import Scene
 
 
@@ -49,6 +51,24 @@ class TestScene:
             enable_read_noise=False,
         )
         return cfg
+
+    def test_background_is_surface_brightness(self):
+        """background_mv is a surface brightness (mag/arcsec^2): per-pixel
+        background electrons must scale with the pixel solid angle."""
+        cfg = self._make_config()
+        scene = Scene(cfg)
+        s = cfg.sensor
+        pixel_area_arcsec2 = (s.y_fov * 3600.0 / s.height) * (s.x_fov * 3600.0 / s.width)
+        expected = mv_to_pe(s.zeropoint, s.background_mv) * pixel_area_arcsec2 * s.exposure
+        assert scene.background_pe == pytest.approx(expected, rel=1e-6)
+
+        # Doubling the linear pixel count at fixed FOV quarters the pixel area,
+        # so the per-pixel background must drop by 4x.
+        cfg_fine = self._make_config()
+        cfg_fine.sensor.height *= 2
+        cfg_fine.sensor.width *= 2
+        scene_fine = Scene(cfg_fine)
+        assert scene_fine.background_pe == pytest.approx(scene.background_pe / 4.0, rel=1e-6)
 
     def test_construction(self):
         """Scene should construct without error."""

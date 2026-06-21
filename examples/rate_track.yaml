@@ -20,7 +20,7 @@ sensor:
   dark_current: 1.0   # e-/pixel/sec
   read_noise: 1.0     # e- RMS
   electronic_noise: 5.0
-  background_mv: 21.0  # mag/arcsec^2 equivalent
+  background_mv: 21.0  # sky surface brightness, mag/arcsec^2
   bias: 50.0           # e-
   gain: 8.0            # e-/DN
   fwc: 100000.0        # full-well capacity (e-)

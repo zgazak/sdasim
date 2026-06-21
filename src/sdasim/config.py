@@ -27,7 +27,7 @@ class SensorConfig:
     read_noise: float = 10.0
     electronic_noise: float = 5.0
     is_cmos: bool = False
-    background_mv: float = 21.0
+    background_mv: float = 21.0  # sky surface brightness, mag/arcsec^2
     bias: float = 50.0
     gain: float = 8.0
     fwc: float = 100000.0
@@ -120,6 +120,23 @@ class ObjectConfig:
 
 
 @dataclass
+class CatalogConfig:
+    """Auto-discovery of field satellites streaking through the FOV.
+
+    When enabled, the whole Space-Track catalog is propagated to each frame's
+    epoch, satellites whose streak touches the (sunlit) FOV are found, and they
+    are rendered as line targets. Requires ``site`` to be set.
+    """
+
+    enabled: bool = False
+    source: str = "spacetrack"        # "spacetrack" | path to a local 2-/3-line file
+    env_path: str | None = None       # .env holding SPACETRACK_USERNAME / SPACETRACK_PASSWORD
+    default_diameter: float = 1.0     # m, fallback size when RCS is unknown
+    albedo: float = 0.2               # geometric albedo for the Lambertian-sphere mv
+    psf_pad_px: float | None = None   # FOV entry/exit pad; default 3*psf_sigma
+
+
+@dataclass
 class SceneConfig:
     sensor: SensorConfig = field(default_factory=SensorConfig)
     stars: StarFieldConfig = field(default_factory=StarFieldConfig)
@@ -136,6 +153,10 @@ class SceneConfig:
     site: SiteConfig | None = None
     objects: list[ObjectConfig] = field(default_factory=list)
     tracking: str | None = None
+    # --- catalog discovery + explicit mount rate (additions) ---
+    catalog: CatalogConfig = field(default_factory=CatalogConfig)
+    mount_ra_rate: float = 0.0   # deg/s, inertial; 0.0 == sidereal track
+    mount_dec_rate: float = 0.0  # deg/s
 
 
 _NESTED_TYPES: dict[str, type] = {}
@@ -152,6 +173,7 @@ def _init_nested_types() -> None:
                 "TargetConfig": TargetConfig,
                 "SiteConfig": SiteConfig,
                 "ObjectConfig": ObjectConfig,
+                "CatalogConfig": CatalogConfig,
             }
         )
 
@@ -162,6 +184,7 @@ _FIELD_TYPE_MAP: dict[str, type] = {
     "stars": StarFieldConfig,
     "star_motion": StarMotionConfig,
     "site": SiteConfig,
+    "catalog": CatalogConfig,
 }
 
 

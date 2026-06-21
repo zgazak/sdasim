@@ -131,6 +131,79 @@ class TestPropagate:
 
 
 # ---------------------------------------------------------------------------
+# Observer velocity in apparent rates (requires satkit, no network)
+# ---------------------------------------------------------------------------
+
+# GEO satellite (NORAD 09855), where the observer's velocity is ~11% of the rate.
+GEO_TLE_L1 = "1 09855U 77007C   26170.33306599 -.00000012  00000-0  00000-0 0  9996"
+GEO_TLE_L2 = "2 09855   3.3870 267.8596 0016186  48.2675 312.2250  1.00336374 25387"
+GEO_OBS_TIME = datetime(2026, 6, 21, 5, 56, 53, 826355, tzinfo=timezone.utc)
+GEO_SITE = SiteConfig(latitude=20.82028, longitude=-156.27944, altitude=1000.0)
+
+
+class TestObserverVelocity:
+    """propagate()/discover_streaks() must subtract the observer's velocity
+    (Earth rotation) so apparent rates are relative to the inertial star field.
+    Dropping it overstated GEO rates by ~1.7"/s (~11%)."""
+
+    @staticmethod
+    def _finite_diff_rates_rad_s(l1, l2, obs, site, dt=1.0):
+        """Independent truth: finite-difference topocentric RA/Dec using the real
+        co-rotating observer geometry (so observer motion is included)."""
+        from datetime import timedelta
+
+        import numpy as np
+        import satkit
+
+        tle = satkit.TLE.from_lines([l1, l2])
+
+        def radec(when):
+            tm = satkit.time(
+                when.year, when.month, when.day, when.hour, when.minute,
+                when.second + when.microsecond / 1e6,
+            )
+            rot = np.asarray(satkit.frametransform.qteme2gcrf(tm).as_rotation_matrix(), float)
+            p = np.asarray(satkit.sgp4(tle, tm)[0], float).reshape(3) @ rot.T
+            ri = np.asarray(satkit.frametransform.qitrf2gcrf(tm).as_rotation_matrix(), float)
+            o = np.asarray(
+                satkit.itrfcoord(
+                    latitude_deg=site.latitude,
+                    longitude_deg=site.longitude,
+                    altitude=site.altitude,
+                ).vector, float,
+            ).reshape(3) @ ri.T
+            x, y, z = p - o
+            return (
+                math.degrees(math.atan2(y, x)) % 360.0,
+                math.degrees(math.atan2(z, math.hypot(x, y))),
+            )
+
+        def dwrap(a, b):
+            return (b - a + 180.0) % 360.0 - 180.0
+
+        ra0, dec0 = radec(obs)
+        ra1, dec1 = radec(obs + timedelta(seconds=dt))
+        return math.radians(dwrap(ra0, ra1) / dt), math.radians(dwrap(dec0, dec1) / dt)
+
+    def test_geo_rate_matches_finite_diff(self):
+        pytest.importorskip("satkit")
+        _, _, ra_rate, dec_rate, range_m = propagate(
+            GEO_TLE_L1, GEO_TLE_L2, GEO_OBS_TIME, GEO_SITE,
+        )
+        # Sanity: this really is a GEO-range object (~37,000 km, in meters).
+        assert 3.5e7 < range_m < 4.2e7
+
+        ra_truth, dec_truth = self._finite_diff_rates_rad_s(
+            GEO_TLE_L1, GEO_TLE_L2, GEO_OBS_TIME, GEO_SITE,
+        )
+        # arcsec/s agreement well under 0.1" (pre-fix the RA rate was ~1.7" high).
+        d_ra = abs(math.degrees(ra_rate - ra_truth) * 3600.0)
+        d_dec = abs(math.degrees(dec_rate - dec_truth) * 3600.0)
+        assert d_ra < 0.1, f"RA rate off by {d_ra:.3f}\"/s"
+        assert d_dec < 0.1, f"Dec rate off by {d_dec:.3f}\"/s"
+
+
+# ---------------------------------------------------------------------------
 # Dithering (requires satkit, no network)
 # ---------------------------------------------------------------------------
 

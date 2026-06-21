@@ -3,6 +3,7 @@
 from sdasim._version import __version__
 from sdasim.batch import BatchRenderResult, render_scene_batch
 from sdasim.config import (
+    CatalogConfig,
     ObjectConfig,
     SceneConfig,
     SensorConfig,
@@ -81,6 +82,7 @@ __all__ = [
     "SensorConfig",
     "SiteConfig",
     "ObjectConfig",
+    "CatalogConfig",
     "StarFieldConfig",
     "StarMotionConfig",
     "TargetConfig",
