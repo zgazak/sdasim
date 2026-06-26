@@ -51,8 +51,13 @@ class TestAngularToPixelRates:
 
         # 1 rad/s dec rate
         row_rate, col_rate = angular_to_pixel_rates(
-            ra_rate=0.0, dec_rate=1.0, dec_deg=0.0,
-            y_fov=y_fov, x_fov=x_fov, height=height, width=width,
+            ra_rate=0.0,
+            dec_rate=1.0,
+            dec_deg=0.0,
+            y_fov=y_fov,
+            x_fov=x_fov,
+            height=height,
+            width=width,
         )
 
         ifov_rad = math.radians(y_fov / height)
@@ -63,8 +68,13 @@ class TestAngularToPixelRates:
     def test_ra_rate_with_cos_dec(self):
         """RA rate is scaled by cos(dec)."""
         row_rate, col_rate = angular_to_pixel_rates(
-            ra_rate=1.0, dec_rate=0.0, dec_deg=60.0,
-            y_fov=1.0, x_fov=1.0, height=512, width=512,
+            ra_rate=1.0,
+            dec_rate=0.0,
+            dec_deg=60.0,
+            y_fov=1.0,
+            x_fov=1.0,
+            height=512,
+            width=512,
         )
 
         ifov_rad = math.radians(1.0 / 512)
@@ -74,8 +84,13 @@ class TestAngularToPixelRates:
 
     def test_zero_rates(self):
         row_rate, col_rate = angular_to_pixel_rates(
-            ra_rate=0.0, dec_rate=0.0, dec_deg=0.0,
-            y_fov=0.5, x_fov=0.5, height=256, width=256,
+            ra_rate=0.0,
+            dec_rate=0.0,
+            dec_deg=0.0,
+            y_fov=0.5,
+            x_fov=0.5,
+            height=256,
+            width=256,
         )
         assert row_rate == 0.0
         assert col_rate == 0.0
@@ -111,7 +126,10 @@ class TestPropagate:
     def test_reasonable_ra_dec(self):
         """Propagation should produce valid RA/Dec values."""
         ra, dec, ra_rate, dec_rate, range_m = propagate(
-            ISS_TLE_L1, ISS_TLE_L2, OBS_TIME, SITE,
+            ISS_TLE_L1,
+            ISS_TLE_L2,
+            OBS_TIME,
+            SITE,
         )
 
         assert 0.0 <= ra < 360.0, f"RA out of range: {ra}"
@@ -123,7 +141,10 @@ class TestPropagate:
     def test_rates_nonzero(self):
         """ISS should have non-negligible angular rates."""
         _, _, ra_rate, dec_rate, _ = propagate(
-            ISS_TLE_L1, ISS_TLE_L2, OBS_TIME, SITE,
+            ISS_TLE_L1,
+            ISS_TLE_L2,
+            OBS_TIME,
+            SITE,
         )
         # ISS moves fast — at least one rate should be significant
         total_rate = math.sqrt(ra_rate**2 + dec_rate**2)
@@ -159,19 +180,27 @@ class TestObserverVelocity:
 
         def radec(when):
             tm = satkit.time(
-                when.year, when.month, when.day, when.hour, when.minute,
+                when.year,
+                when.month,
+                when.day,
+                when.hour,
+                when.minute,
                 when.second + when.microsecond / 1e6,
             )
             rot = np.asarray(satkit.frametransform.qteme2gcrf(tm).as_rotation_matrix(), float)
             p = np.asarray(satkit.sgp4(tle, tm)[0], float).reshape(3) @ rot.T
             ri = np.asarray(satkit.frametransform.qitrf2gcrf(tm).as_rotation_matrix(), float)
-            o = np.asarray(
-                satkit.itrfcoord(
-                    latitude_deg=site.latitude,
-                    longitude_deg=site.longitude,
-                    altitude=site.altitude,
-                ).vector, float,
-            ).reshape(3) @ ri.T
+            o = (
+                np.asarray(
+                    satkit.itrfcoord(
+                        latitude_deg=site.latitude,
+                        longitude_deg=site.longitude,
+                        altitude=site.altitude,
+                    ).vector,
+                    float,
+                ).reshape(3)
+                @ ri.T
+            )
             x, y, z = p - o
             return (
                 math.degrees(math.atan2(y, x)) % 360.0,
@@ -188,19 +217,25 @@ class TestObserverVelocity:
     def test_geo_rate_matches_finite_diff(self):
         pytest.importorskip("satkit")
         _, _, ra_rate, dec_rate, range_m = propagate(
-            GEO_TLE_L1, GEO_TLE_L2, GEO_OBS_TIME, GEO_SITE,
+            GEO_TLE_L1,
+            GEO_TLE_L2,
+            GEO_OBS_TIME,
+            GEO_SITE,
         )
         # Sanity: this really is a GEO-range object (~37,000 km, in meters).
         assert 3.5e7 < range_m < 4.2e7
 
         ra_truth, dec_truth = self._finite_diff_rates_rad_s(
-            GEO_TLE_L1, GEO_TLE_L2, GEO_OBS_TIME, GEO_SITE,
+            GEO_TLE_L1,
+            GEO_TLE_L2,
+            GEO_OBS_TIME,
+            GEO_SITE,
         )
         # arcsec/s agreement well under 0.1" (pre-fix the RA rate was ~1.7" high).
         d_ra = abs(math.degrees(ra_rate - ra_truth) * 3600.0)
         d_dec = abs(math.degrees(dec_rate - dec_truth) * 3600.0)
-        assert d_ra < 0.1, f"RA rate off by {d_ra:.3f}\"/s"
-        assert d_dec < 0.1, f"Dec rate off by {d_dec:.3f}\"/s"
+        assert d_ra < 0.1, f'RA rate off by {d_ra:.3f}"/s'
+        assert d_dec < 0.1, f'Dec rate off by {d_dec:.3f}"/s'
 
 
 # ---------------------------------------------------------------------------
@@ -212,19 +247,29 @@ class TestDither:
     def test_dither_changes_position(self):
         """Dithered TLE should produce a different position."""
         ra_orig, dec_orig, _, _, _ = propagate(
-            ISS_TLE_L1, ISS_TLE_L2, OBS_TIME, SITE,
+            ISS_TLE_L1,
+            ISS_TLE_L2,
+            OBS_TIME,
+            SITE,
         )
 
         _, l2_dithered = dither_tle(
-            ISS_TLE_L1, ISS_TLE_L2, 100.0, SITE, OBS_TIME,
+            ISS_TLE_L1,
+            ISS_TLE_L2,
+            100.0,
+            SITE,
+            OBS_TIME,
         )
 
         ra_dith, dec_dith, _, _, _ = propagate(
-            ISS_TLE_L1, l2_dithered, OBS_TIME, SITE,
+            ISS_TLE_L1,
+            l2_dithered,
+            OBS_TIME,
+            SITE,
         )
 
         # Position should be different
-        offset = math.sqrt((ra_dith - ra_orig)**2 + (dec_dith - dec_orig)**2)
+        offset = math.sqrt((ra_dith - ra_orig) ** 2 + (dec_dith - dec_orig) ** 2)
         assert offset > 1e-6, "Dithered position should differ from original"
 
     def test_zero_dither_unchanged(self):
@@ -242,16 +287,28 @@ class TestDither:
 def _mock_object_states():
     """Create mock ObjectStates for tracking mode tests."""
     primary = ObjectState(
-        norad_id="25544", ra=180.0, dec=12.0,
-        ra_rate=0.001, dec_rate=0.002,
-        row_rate=5.0, col_rate=-3.0,
-        mv=2.0, pixel_row=256.0, pixel_col=256.0,
+        norad_id="25544",
+        ra=180.0,
+        dec=12.0,
+        ra_rate=0.001,
+        dec_rate=0.002,
+        row_rate=5.0,
+        col_rate=-3.0,
+        mv=2.0,
+        pixel_row=256.0,
+        pixel_col=256.0,
     )
     secondary = ObjectState(
-        norad_id="25994", ra=180.1, dec=12.05,
-        ra_rate=0.0005, dec_rate=0.001,
-        row_rate=2.0, col_rate=-1.0,
-        mv=14.0, pixel_row=280.0, pixel_col=230.0,
+        norad_id="25994",
+        ra=180.1,
+        dec=12.05,
+        ra_rate=0.0005,
+        dec_rate=0.001,
+        row_rate=2.0,
+        col_rate=-1.0,
+        mv=14.0,
+        pixel_row=280.0,
+        pixel_col=230.0,
     )
     return [primary, secondary]
 
@@ -282,6 +339,7 @@ class TestTrackingModes:
 
         config = self._make_config("rate_track")
         from sdasim.scene import Scene
+
         Scene(config)
 
         assert config.star_motion.translation == [-5.0, 3.0]
@@ -294,6 +352,7 @@ class TestTrackingModes:
 
         config = self._make_config("rate_track")
         from sdasim.scene import Scene
+
         Scene(config)
 
         assert config.targets[0].velocity == [0.0, 0.0]
@@ -306,6 +365,7 @@ class TestTrackingModes:
 
         config = self._make_config("rate_track")
         from sdasim.scene import Scene
+
         Scene(config)
 
         expected = [2.0 - 5.0, -1.0 - (-3.0)]  # [-3.0, 2.0]
@@ -319,6 +379,7 @@ class TestTrackingModes:
 
         config = self._make_config("sidereal")
         from sdasim.scene import Scene
+
         Scene(config)
 
         assert config.star_motion.translation == [0.0, 0.0]
@@ -332,6 +393,7 @@ class TestTrackingModes:
 
         config = self._make_config("sidereal")
         from sdasim.scene import Scene
+
         Scene(config)
 
         assert config.targets[0].velocity == [5.0, -3.0]
@@ -350,6 +412,7 @@ class TestTrackingModes:
 
         config = self._make_config("rate_track")
         from sdasim.scene import Scene
+
         Scene(config)
 
         half_exp = config.sensor.exposure / 2.0
@@ -367,8 +430,10 @@ class TestRawRaDec:
         from sdasim.orbits import compute_object_states
 
         obj = ObjectConfig(
-            ra=180.0, dec=12.0,
-            ra_rate=0.01, dec_rate=0.02,  # deg/s
+            ra=180.0,
+            dec=12.0,
+            ra_rate=0.01,
+            dec_rate=0.02,  # deg/s
             mv=10.0,
         )
         sensor = SensorConfig(height=512, width=512, y_fov=0.5, x_fov=0.5)
@@ -426,6 +491,7 @@ class TestRawRaDec:
             seed=42,
         )
         from sdasim.scene import Scene
+
         scene = Scene(config)
 
         # Primary should be stationary in rate_track
@@ -450,6 +516,7 @@ class TestRawRaDec:
             seed=42,
         )
         from sdasim.scene import Scene
+
         scene = Scene(config)
 
         assert config.star_motion.translation == [0.0, 0.0]
@@ -483,6 +550,7 @@ class TestBackwardCompat:
             seed=42,
         )
         from sdasim.scene import Scene
+
         scene = Scene(config)
 
         assert scene._object_states is None

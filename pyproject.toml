@@ -30,11 +30,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Astronomy",
     "Topic :: Scientific/Engineering :: Image Processing",
 ]
-dependencies = [
-    "torch>=2.2",
-    "numpy>=1.26",
-    "pyyaml>=6.0",
-]
+dependencies = ["torch>=2.2", "numpy>=1.26", "pyyaml>=6.0"]
 
 [project.optional-dependencies]
 catalogs = ["astropy>=6.0"]
@@ -44,10 +40,7 @@ calibrate = ["astropy>=6.0", "scipy>=1.10", "matplotlib>=3.5"]
 # TLE-based orbital scene mode (objects/site/tracking). Imports are lazy,
 # so the core install stays light; only needed for physics-driven scenes.
 orbital = ["satkit>=0.14.1", "httpx>=0.28.1"]
-dev = [
-    "pytest>=8.0",
-    "ruff>=0.3",
-]
+dev = ["pytest>=8.0", "pytest-cov>=7.1.0", "ruff>=0.3"]
 
 [project.scripts]
 sdasim = "sdasim.cli:main"
