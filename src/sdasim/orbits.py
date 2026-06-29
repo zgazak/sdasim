@@ -456,8 +456,10 @@ class StreakState:
     range_m: float
 
 
-# In-process cache keyed by (path, mtime, default_diameter) so per-exposure Scene
-# rebuilds don't re-parse the 30k-object catalog.
+# In-process cache so per-exposure Scene rebuilds don't re-parse the 30k-object
+# catalog. Keyed by (path, default_diameter) with the file mtime stored alongside
+# the catalog, so a daily Space-Track refresh REPLACES the stale entry (freeing
+# the old LoadedCatalog) instead of accreting a fresh ~30k-TLE catalog per day.
 _CAT_CACHE: dict = {}
 
 
@@ -575,13 +577,15 @@ def load_catalog(cfg: CatalogConfig) -> LoadedCatalog:
     else:
         path = Path(cfg.source).expanduser()
 
-    key = (str(path), path.stat().st_mtime, float(cfg.default_diameter))
-    if key not in _CAT_CACHE:
+    key = (str(path), float(cfg.default_diameter))
+    mtime = path.stat().st_mtime
+    cached = _CAT_CACHE.get(key)
+    if cached is None or cached[0] != mtime:
         tles = satkit.TLE.from_file(str(path))
         if not isinstance(tles, list):
             tles = [tles]
-        _CAT_CACHE[key] = LoadedCatalog(tles, _diameters_for(tles, cfg.default_diameter))
-    return _CAT_CACHE[key]
+        _CAT_CACHE[key] = (mtime, LoadedCatalog(tles, _diameters_for(tles, cfg.default_diameter)))
+    return _CAT_CACHE[key][1]
 
 
 def _phase_angle_factor(phi_rad: np.ndarray) -> np.ndarray:
