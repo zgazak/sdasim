@@ -84,6 +84,13 @@ class Scene:
         self.device = resolve_device(config.device)
         self.sensor = config.sensor
         self._object_states = None
+        # Star-field bookkeeping. `_star_mode` records the loaded catalog mode so
+        # render() knows whether the field is sky-backed (sstrc7) and can re-project
+        # it to a per-frame commanded pointing. `_reproj_cache` memoizes the most
+        # recent (ra, dec) -> (positions, intensities) so repeated renders at one
+        # pointing don't re-run the WCS projection.
+        self._star_mode: str | None = None
+        self._reproj_cache: tuple[tuple[float, float], tuple[Tensor, Tensor]] | None = None
 
         # Validate mode
         if config.mode == "rate_sidereal" and config.sidereal_start is None:
@@ -182,6 +189,7 @@ class Scene:
         """Load star catalog based on config."""
         sc = config.stars
         sensor = config.sensor
+        self._star_mode = sc.mode
 
         if sc.mode == "bins":
             self.star_positions, self.star_intensities = generate_random_stars(
@@ -198,25 +206,52 @@ class Scene:
                 device=self.device,
             )
         elif sc.mode == "sstrc7":
-            from sdasim.stars import load_sstrc7
-
-            self.star_positions, self.star_intensities = load_sstrc7(
-                height=sensor.height,
-                width=sensor.width,
-                y_fov=sensor.y_fov,
-                x_fov=sensor.x_fov,
-                ra=sc.ra,
-                dec=sc.dec,
-                rot=sc.rot,
-                zeropoint=sensor.zeropoint,
-                exposure=sensor.exposure,
-                catalog_path=sc.catalog_path,
-                pad_mult=sc.pad_mult,
-                mv_max=sc.mv_max,
-                device=self.device,
-            )
+            self.star_positions, self.star_intensities = self._load_sstrc7_stars(sc.ra, sc.dec)
         else:
             raise ValueError(f"Unknown star mode: {sc.mode}")
+
+    def _load_sstrc7_stars(self, ra: float, dec: float) -> tuple[Tensor, Tensor]:
+        """Project the SSTRC7 catalog onto the focal plane for a pointing center.
+
+        Split out from `_load_stars` so `render()` can re-project the (sky-backed)
+        star field to a per-frame commanded pointing without a full Scene rebuild.
+        Everything but the pointing (FOV, rotation, exposure, catalog path, mag cut)
+        is fixed at construction and read from config here.
+        """
+        from sdasim.stars import load_sstrc7
+
+        sc = self.config.stars
+        sensor = self.sensor
+        return load_sstrc7(
+            height=sensor.height,
+            width=sensor.width,
+            y_fov=sensor.y_fov,
+            x_fov=sensor.x_fov,
+            ra=ra,
+            dec=dec,
+            rot=sc.rot,
+            zeropoint=sensor.zeropoint,
+            exposure=sensor.exposure,
+            catalog_path=sc.catalog_path,
+            pad_mult=sc.pad_mult,
+            mv_max=sc.mv_max,
+            device=self.device,
+        )
+
+    def _stars_for_pointing(self, ra: float, dec: float) -> tuple[Tensor, Tensor]:
+        """Return the SSTRC7 star field for a pointing center, memoizing the last one.
+
+        The parsed catalog zones are cached in `sstrc7`, so a re-projection is just a
+        WCS transform over the in-FOV stars (~sub-millisecond), not a disk read; the
+        one-entry cache here additionally skips recompute when consecutive renders
+        share a pointing.
+        """
+        key = (round(float(ra), 9), round(float(dec), 9))
+        if self._reproj_cache is not None and self._reproj_cache[0] == key:
+            return self._reproj_cache[1]
+        stars = self._load_sstrc7_stars(ra, dec)
+        self._reproj_cache = (key, stars)
+        return stars
 
     def _init_from_objects(self, config: SceneConfig) -> None:
         """Initialize scene from orbital objects (TLE-based physics mode).
@@ -413,6 +448,24 @@ class Scene:
         target_intensities = overrides.get("target_intensities", tgt_int)
         target_velocities = overrides.get("target_velocities", tgt_vel)
 
+        # Sky-backed star fields (sstrc7) track the commanded pointing per frame.
+        # When point_ra/point_dec are supplied (and the caller hasn't overridden the
+        # star field directly), re-project the catalog to that center so a sequence
+        # with moving pointing renders the correct stars for each frame instead of
+        # the field baked in at construction. Cheap: parsed zones are cached, so this
+        # is a WCS transform, not a disk read. Other modes (random `bins`) aren't
+        # sky-backed, so pointing overrides leave their field unchanged.
+        if (
+            self._star_mode == "sstrc7"
+            and "star_positions" not in overrides
+            and "star_intensities" not in overrides
+            and ("point_ra" in overrides or "point_dec" in overrides)
+        ):
+            star_positions, star_intensities = self._stars_for_pointing(
+                overrides.get("point_ra", self.config.stars.ra),
+                overrides.get("point_dec", self.config.stars.dec),
+            )
+
         center = (sensor.height / 2.0, sensor.width / 2.0)
 
         # --- Catalog discovery: append auto-found field satellites as line targets ---
@@ -606,6 +659,8 @@ class Scene:
             ),  # [[row_rate, col_rate], ...] px/sec
             "exposure": sensor.exposure,  # seconds
             "obs_time": self.config.obs_time,
+            "point_ra": overrides.get("point_ra", self.config.stars.ra),  # deg (star-field center)
+            "point_dec": overrides.get("point_dec", self.config.stars.dec),  # deg
             "gain": sensor.gain,
             "read_noise": sensor.read_noise,
             "dark_current": sensor.dark_current,
