@@ -148,9 +148,9 @@ def from_satsim_config(satsim_dict: dict, seed: int | None = None) -> SceneConfi
         mv_bins = _get(stars_cfg, "mv", "bins", default=[6, 7, 8, 9, 10, 11, 12, 13, 14, 15])
         density = _get(stars_cfg, "mv", "density", default=[1.0] * (len(mv_bins) - 1))
         stars = StarFieldConfig(mode="bins", mv_bins=mv_bins, density=density)
-    elif star_mode == "sstr7":
+    elif star_mode == "sstrc7":
         stars = StarFieldConfig(
-            mode="sstr7",
+            mode="sstrc7",
             catalog_path=_get(stars_cfg, "path", default=None),
         )
     else:

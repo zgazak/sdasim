@@ -28,7 +28,7 @@ sensor:
   a2d_dtype: uint16
 
 stars:
-  mode: sstr7
+  mode: sstrc7
 
 # No star motion — sensor tracks the star field (sidereal tracking).
 star_motion:

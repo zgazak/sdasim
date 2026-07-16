@@ -35,7 +35,7 @@ sensor:
   a2d_dtype: uint16
 
 stars:
-  mode: sstr7
+  mode: sstrc7
 
 # Star motion defines the tracking rate (sensor slews at this rate).
 # Stars streak at this rate in rate-track frames, are stationary in sidereal.

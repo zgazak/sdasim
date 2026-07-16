@@ -8,21 +8,21 @@
 #   sdasim.io.write_sequence(images, annotations, "output/rate_track/")
 
 sensor:
-  height: 8192
-  width: 8192
-  y_fov: 2.0          # degrees
-  x_fov: 2.0
-  exposure: 2.0        # seconds — long exposure to collect photons
+  height: 8120
+  width: 8120
+  y_fov: 2.05          # degrees
+  x_fov: 2.05
+  exposure: 4.0        # seconds — long exposure to collect photons
   gap: 0.5             # inter-frame gap (seconds)
-  num_frames: 8
+  num_frames: 1
   zeropoint: 23.5
-  psf_sigma: 0.6       # pixels (Gaussian PSF width)
-  dark_current: 1.0   # e-/pixel/sec
-  read_noise: 1.0     # e- RMS
-  electronic_noise: 5.0
-  background_mv: 21.0  # sky surface brightness, mag/arcsec^2
+  psf_sigma: 2       # pixels (Gaussian PSF width)
+  dark_current: 0.15   # e-/pixel/sec
+  read_noise: 0.8     # e- RMS
+  electronic_noise: 0.0
+  background_mv: 19.0  # sky surface brightness, mag/arcsec^2
   bias: 50.0           # e-
-  gain: 8.0            # e-/DN
+  gain: 1            # e-/DN
   fwc: 100000.0        # full-well capacity (e-)
   a2d_bias: 500.0      # DN
   a2d_dtype: uint16

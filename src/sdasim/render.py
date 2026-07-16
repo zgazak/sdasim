@@ -120,6 +120,7 @@ def render_frame(
     a2d_dtype: str,
     enable_shot_noise: bool = True,
     enable_read_noise: bool = True,
+    defer_read_noise: bool = False,
     star_velocity: list[float] | Tensor | None = None,
     star_rotation: float = 0.0,
     target_velocities: Tensor | None = None,
@@ -231,6 +232,11 @@ def render_frame(
     # Shot noise (Poisson)
     if enable_shot_noise:
         signal = poisson_noise(signal)
+
+    # When defer_read_noise is True, return analog signal before read noise
+    # and A/D so the caller can apply them after binning (CCD mode).
+    if defer_read_noise:
+        return signal, star_signal, target_signal
 
     # Read + electronic noise (Gaussian)
     if enable_read_noise:

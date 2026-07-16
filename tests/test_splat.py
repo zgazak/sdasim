@@ -111,13 +111,22 @@ class TestSplatGaussians:
         assert sigma.grad is not None
 
     def test_custom_radius(self):
-        """Custom radius should limit the footprint."""
+        """radius bounds the footprint extent; flux is conserved by renormalization."""
         pos = torch.tensor([[16.0, 16.0]])
         intensity = torch.tensor([1000.0])
-        # Small radius — some energy lost
         img_small = splat_gaussians(32, 32, pos, intensity, sigma=3.0, radius=2)
         img_large = splat_gaussians(32, 32, pos, intensity, sigma=3.0, radius=10)
-        assert img_small.sum().item() < img_large.sum().item()
+
+        # Each footprint is renormalized to sum=1, so total flux equals the input
+        # intensity regardless of radius (both stay fully in-bounds here).
+        assert abs(img_small.sum().item() - 1000.0) < 1.0
+        assert abs(img_large.sum().item() - 1000.0) < 1.0
+
+        # radius bounds the spatial extent: the radius=2 footprint is confined to
+        # the 5x5 box around the center, while radius=10 spreads energy beyond it.
+        nonzero_small = img_small > 0
+        assert nonzero_small[14:19, 14:19].sum().item() == nonzero_small.sum().item()
+        assert img_large[14:19, 14:19].sum().item() < img_large.sum().item()
 
     def test_non_negative_output(self):
         """Output should be non-negative everywhere."""

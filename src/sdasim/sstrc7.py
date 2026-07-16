@@ -1,6 +1,6 @@
 """SSTRC7 star catalog reader.
 
-Ported from senpai.catalog.sstr7 — provides query_by_los() for rendering
+Ported from senpai.catalog.sstrc7 — provides query_by_los() for rendering
 star fields from the SSTRC7 binary catalog.
 
 The catalog uses zone-indexed binary files:
@@ -13,17 +13,106 @@ from __future__ import annotations
 import math
 import os
 import struct
+import threading
+from collections import OrderedDict, namedtuple
 from functools import lru_cache
 
 import numpy as np
 from astropy import wcs
 
-# SSTRC7 catalog location. Override with the SDASIM_SSTR7_PATH environment
+# SSTRC7 catalog location. Override with the SDASIM_SSTRC7_PATH environment
 # variable, or by passing `catalog_path` in the scene config.
-DEFAULT_SSTR7_PATH = os.environ.get("SDASIM_SSTR7_PATH", "sstrc7")
+DEFAULT_SSTRC7_PATH = os.environ.get("SDASIM_SSTRC7_PATH", "sstrc7")
 
 RECORD_LEN = 30  # 30 unsigned shorts = 60 bytes
 RECORD_LEN_BYTES = RECORD_LEN * 2
+
+# Compact per-star representation for the zone cache. Storing stars as a numpy
+# structured array (24 bytes/star) instead of a list of {ra,dec,mv} Python dicts
+# (~256 bytes/star) cuts cached-zone memory ~11x.
+_STAR_DTYPE = np.dtype([("ra", "f8"), ("dec", "f8"), ("mv", "f8")])
+
+# Default cap for the parsed-zone cache, overridable with SDASIM_ZONE_CACHE_MB.
+# A sky-sweeping camera touches new zones continuously; without a hard cap the
+# cache grows until the host swaps. Bound it by BYTES (not entry count): zones
+# vary ~10-100x in size (sparse pole ~10 KB vs galactic plane ~2.4 MB even when
+# compact), so a count cap doesn't actually bound memory.
+_ZONE_CACHE_DEFAULT_MB = 128
+
+_ZoneCacheInfo = namedtuple(
+    "_ZoneCacheInfo", ["hits", "misses", "currsize", "currbytes", "maxbytes"]
+)
+
+
+def _zone_cache_max_bytes() -> int:
+    """Resolve the zone-cache byte budget from the environment (read at import)."""
+    return int(float(os.environ.get("SDASIM_ZONE_CACHE_MB", _ZONE_CACHE_DEFAULT_MB)) * 1024 * 1024)
+
+
+class _BytesBoundedCache:
+    """LRU cache for parsed zones, bounded by total result bytes (``arr.nbytes``).
+
+    Mimics the ``functools.lru_cache`` surface this module relies on
+    (callable, ``cache_clear()``, ``cache_info()``) but evicts by bytes so the
+    cached set has a hard memory ceiling regardless of how dense the zones a
+    tracking camera sweeps through happen to be. Recently-used zones stay
+    resident, preserving the warm-rebuild speedup. Thread-safe: rendering runs
+    in a worker thread, so guard the bookkeeping with a lock (the disk read +
+    parse runs outside the lock; a rare duplicate miss is harmless/idempotent).
+    """
+
+    def __init__(self, func, max_bytes: int):
+        self._func = func
+        self._max_bytes = int(max_bytes)
+        self._store: OrderedDict = OrderedDict()  # key -> structured array
+        self._bytes = 0
+        self._hits = 0
+        self._misses = 0
+        self._lock = threading.Lock()
+        self.__wrapped__ = func
+        self.__name__ = getattr(func, "__name__", "cached")
+        self.__doc__ = func.__doc__
+
+    @staticmethod
+    def _key(args, kwargs):
+        return args + (tuple(sorted(kwargs.items())) if kwargs else ())
+
+    def __call__(self, *args, **kwargs):
+        key = self._key(args, kwargs)
+        with self._lock:
+            arr = self._store.get(key)
+            if arr is not None:
+                self._store.move_to_end(key)
+                self._hits += 1
+                return arr
+            self._misses += 1
+        # Compute outside the lock (disk I/O + parse).
+        arr = self._func(*args, **kwargs)
+        nb = int(arr.nbytes)
+        with self._lock:
+            if key not in self._store:
+                self._store[key] = arr
+                self._bytes += nb
+                # Evict least-recently-used until under budget (keep >=1 entry
+                # so a single zone larger than the cap can still be returned).
+                while self._bytes > self._max_bytes and len(self._store) > 1:
+                    _, old = self._store.popitem(last=False)
+                    self._bytes -= int(old.nbytes)
+            else:
+                self._store.move_to_end(key)
+            return self._store[key]
+
+    def cache_clear(self) -> None:
+        with self._lock:
+            self._store.clear()
+            self._bytes = 0
+            self._hits = self._misses = 0
+
+    def cache_info(self) -> "_ZoneCacheInfo":
+        with self._lock:
+            return _ZoneCacheInfo(
+                self._hits, self._misses, len(self._store), self._bytes, self._max_bytes
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -191,8 +280,7 @@ def read_star(buffer: bytes, filter_center: float | None = None):
     }
 
 
-@lru_cache(maxsize=1024)
-def _load_stars_for_zone(
+def _load_stars_for_zone_uncached(
     zone_id: int,
     pos: int,
     length: int,
@@ -200,18 +288,30 @@ def _load_stars_for_zone(
     rootPath: str,
     filter_center: float | None = None,
 ):
-    """Load and parse stars for a single zone (cached)."""
+    """Load and parse stars for a single zone.
+
+    Returns a numpy structured array (fields ``ra``, ``dec``, ``mv``) ordered the
+    same way the old list-of-dicts was: ascending record order, or reversed when
+    ``bound == "minRA"`` (so the RA clip in ``query_by_min_max`` can truncate at
+    the first out-of-bounds star).
+    """
     buf, start, end = load_zone({"id": zone_id, "pos": pos, "length": length}, rootPath)
-    stars = []
     nrec = (end - start) // RECORD_LEN_BYTES
-    indices = range(nrec)
-    if bound == "minRA":
-        indices = reversed(range(nrec))
-    for i in indices:
+    out = np.empty(nrec, dtype=_STAR_DTYPE)
+    indices = reversed(range(nrec)) if bound == "minRA" else range(nrec)
+    for out_i, i in enumerate(indices):
         s = i * RECORD_LEN_BYTES
         star = read_star(buf[s : s + RECORD_LEN_BYTES], filter_center=filter_center)
-        stars.append(star)
-    return stars
+        out[out_i] = (star["ra"], star["dec"], star["mv"])
+    return out
+
+
+# Byte-bounded zone cache (see _BytesBoundedCache). Same call surface as the
+# previous @lru_cache; query_by_min_max calls it positionally with a
+# filter_center keyword.
+_load_stars_for_zone = _BytesBoundedCache(
+    _load_stars_for_zone_uncached, _zone_cache_max_bytes()
+)
 
 
 # ---------------------------------------------------------------------------
@@ -224,7 +324,7 @@ def query_by_min_max(
     ra_max: float,
     dec_min: float,
     dec_max: float,
-    rootPath: str = DEFAULT_SSTR7_PATH,
+    rootPath: str = DEFAULT_SSTRC7_PATH,
     clip_min_max: bool = True,
     filter_center: float | None = None,
 ):
@@ -244,7 +344,7 @@ def query_by_min_max(
         numDecZones=1800,
     )
 
-    stars = []
+    parts = []
     for z in zones:
         ss = _load_stars_for_zone(
             z["id"],
@@ -255,19 +355,22 @@ def query_by_min_max(
             filter_center=filter_center,
         )
         if clip_min_max:
+            # Truncate at the FIRST star that crosses the bound — same semantics
+            # as the old break-on-first-violation loop (relies on the zone's RA
+            # ordering, which _load_stars_for_zone preserves).
             if z["bound"] == "minRA":
-                for i in range(len(ss)):
-                    if ss[i]["ra"] < ra_min:
-                        ss = ss[:i]
-                        break
+                viol = ss["ra"] < ra_min
             elif z["bound"] == "maxRA":
-                for i in range(len(ss)):
-                    if ss[i]["ra"] > ra_max:
-                        ss = ss[:i]
-                        break
-        stars += ss
+                viol = ss["ra"] > ra_max
+            else:
+                viol = None
+            if viol is not None and viol.any():
+                ss = ss[: int(viol.argmax())]
+        parts.append(ss)
 
-    return stars
+    if not parts:
+        return np.empty(0, dtype=_STAR_DTYPE)
+    return np.concatenate(parts)
 
 
 def _get_wcs(height, width, y_ifov, x_ifov, ra, dec, rot=0.0):
@@ -353,7 +456,7 @@ def query_by_los(
     ra: float,
     dec: float,
     rot: float = 0.0,
-    rootPath: str = DEFAULT_SSTR7_PATH,
+    rootPath: str = DEFAULT_SSTRC7_PATH,
     pad_mult: float = 0.0,
     origin: str = "center",
     filter_ob: bool = True,
@@ -401,9 +504,12 @@ def query_by_los(
         filter_center=filter_center,
     )
 
-    rra = np.array([s["ra"] for s in stars])
-    ddec = np.array([s["dec"] for s in stars])
-    mm = np.array([s["mv"] for s in stars])
+    # query_by_min_max returns a FRESH array (np.concatenate always allocates,
+    # so it never aliases the cached zone data); these field reads are cheap
+    # views into that fresh array and are safe to pass downstream.
+    rra = stars["ra"]
+    ddec = stars["dec"]
+    mm = stars["mv"]
 
     cc, rr = w.wcs_world2pix(np.degrees(rra), np.degrees(ddec), 0)
 

@@ -214,5 +214,9 @@ calib/
 # Scratch / calibration work area (internal data paths, not for distribution)
 temp/
 
+# macOS / JetBrains local cruft
+.DS_Store
+.idea/
+
 # Claude Code local settings
 .claude/settings.local.json

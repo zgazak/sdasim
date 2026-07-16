@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "sdasim"
-version = "0.2.0"
+version = "0.3.0"
 description = "Speed-optimized differentiable satellite scene simulator"
 readme = "README.md"
 license = "MIT"
@@ -41,6 +41,9 @@ catalogs = ["astropy>=6.0"]
 compat = ["satsim"]
 fits = ["astropy>=6.0"]
 calibrate = ["astropy>=6.0", "scipy>=1.10", "matplotlib>=3.5"]
+# TLE-based orbital scene mode (objects/site/tracking). Imports are lazy,
+# so the core install stays light; only needed for physics-driven scenes.
+orbital = ["satkit>=0.14.1", "httpx>=0.28.1"]
 dev = [
     "pytest>=8.0",
     "ruff>=0.3",

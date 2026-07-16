@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import pytest
 import torch
 import yaml
 
 from sdasim.config import SceneConfig, SensorConfig, StarFieldConfig, StarMotionConfig, TargetConfig
+from sdasim.fpa import mv_to_pe
 from sdasim.scene import Scene
 
 
@@ -49,6 +51,24 @@ class TestScene:
             enable_read_noise=False,
         )
         return cfg
+
+    def test_background_is_surface_brightness(self):
+        """background_mv is a surface brightness (mag/arcsec^2): per-pixel
+        background electrons must scale with the pixel solid angle."""
+        cfg = self._make_config()
+        scene = Scene(cfg)
+        s = cfg.sensor
+        pixel_area_arcsec2 = (s.y_fov * 3600.0 / s.height) * (s.x_fov * 3600.0 / s.width)
+        expected = mv_to_pe(s.zeropoint, s.background_mv) * pixel_area_arcsec2 * s.exposure
+        assert scene.background_pe == pytest.approx(expected, rel=1e-6)
+
+        # Doubling the linear pixel count at fixed FOV quarters the pixel area,
+        # so the per-pixel background must drop by 4x.
+        cfg_fine = self._make_config()
+        cfg_fine.sensor.height *= 2
+        cfg_fine.sensor.width *= 2
+        scene_fine = Scene(cfg_fine)
+        assert scene_fine.background_pe == pytest.approx(scene.background_pe / 4.0, rel=1e-6)
 
     def test_construction(self):
         """Scene should construct without error."""
@@ -233,6 +253,80 @@ class TestScene:
         # Frames should differ because stars shift between frames
         assert not torch.equal(img0, img1), "Frame 0 and 1 should differ (star drift)"
         assert not torch.equal(img1, img2), "Frame 1 and 2 should differ (star drift)"
+
+    def test_pointing_override_reprojects_sstrc7(self, monkeypatch):
+        """A sky-backed (sstrc7) field must re-project to a per-frame point_ra/dec.
+
+        The catalog is faked so this doesn't need on-disk data: the fake loader
+        encodes the queried RA as the star count, so metadata['num_stars'] reveals
+        which pointing the field was loaded for.
+        """
+        import sdasim.stars as stars_mod
+
+        def fake_loader(**kw):
+            # star count == round(RA) so the caller can tell which center was queried
+            n = int(round(kw["ra"]))
+            return (
+                torch.zeros(n, 2, dtype=torch.float32),
+                torch.full((n,), 1000.0, dtype=torch.float32),
+            )
+
+        monkeypatch.setattr(stars_mod, "load_sstrc7", fake_loader)
+
+        cfg = self._make_config()
+        cfg.stars = StarFieldConfig(mode="sstrc7", ra=10.0, dec=5.0, catalog_path="/unused")
+        cfg.sensor.num_frames = 1
+        scene = Scene(cfg)
+
+        # Built at the config center (RA=10 -> 10 stars).
+        assert scene.star_positions.shape[0] == 10
+
+        # No pointing override -> baked field, metadata reports the build center.
+        _, meta0 = scene.render(0)
+        assert meta0["num_stars"] == 10
+        assert meta0["point_ra"] == 10.0 and meta0["point_dec"] == 5.0
+
+        # Pointing override -> field re-projects to the commanded center (RA=25 -> 25 stars).
+        _, meta1 = scene.render(0, point_ra=25.0, point_dec=-3.0)
+        assert meta1["num_stars"] == 25
+        assert meta1["point_ra"] == 25.0 and meta1["point_dec"] == -3.0
+
+    def test_pointing_override_cached_per_center(self, monkeypatch):
+        """Re-projection memoizes the last pointing so repeat renders don't re-query."""
+        import sdasim.stars as stars_mod
+
+        calls = []
+
+        def counting_loader(**kw):
+            calls.append((kw["ra"], kw["dec"]))
+            return (
+                torch.zeros(1, 2, dtype=torch.float32),
+                torch.full((1,), 1000.0, dtype=torch.float32),
+            )
+
+        monkeypatch.setattr(stars_mod, "load_sstrc7", counting_loader)
+
+        cfg = self._make_config()
+        cfg.stars = StarFieldConfig(mode="sstrc7", ra=10.0, dec=5.0, catalog_path="/unused")
+        cfg.sensor.num_frames = 1
+        scene = Scene(cfg)
+        assert len(calls) == 1  # build-time load
+
+        scene.render(0, point_ra=20.0, point_dec=0.0)
+        scene.render(0, point_ra=20.0, point_dec=0.0)  # same center -> cache hit
+        assert len(calls) == 2, "second render at the same pointing must not re-query"
+
+        scene.render(0, point_ra=21.0, point_dec=0.0)  # new center -> re-query
+        assert len(calls) == 3
+
+    def test_pointing_override_ignored_for_bins(self):
+        """Random `bins` stars are not sky-backed, so point_ra/dec must not move them."""
+        cfg = self._make_config()  # bins mode, noise disabled
+        cfg.sensor.num_frames = 1
+        scene = Scene(cfg)
+        img_a, _ = scene.render(0, point_ra=10.0, point_dec=10.0)
+        img_b, _ = scene.render(0, point_ra=200.0, point_dec=-20.0)
+        assert torch.equal(img_a, img_b)
 
     def test_target_visible_and_moves(self):
         """Target should be visible and move between frames."""

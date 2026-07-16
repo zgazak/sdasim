@@ -23,10 +23,12 @@ src/sdasim/
   config.py      # Flat dataclasses + YAML loader (no $sample/$ref)
   noise.py       # Differentiable Poisson (STE) + Gaussian (reparam trick)
   fpa.py         # A/D conversion, mv↔pe, eod_to_sigma
-  stars.py       # Star catalogs: random bins, SSTR7, Gaia (lazy import)
+  sstrc7.py      # Native SSTRC7 catalog reader (binary I/O + WCS projection)
+  stars.py       # Star catalogs: random bins, SSTRC7, Gaia (lazy import)
   targets.py     # Target trajectory computation
   device.py      # GPU-first device management
   io.py          # Optional FITS/JSON writers (not in hot path)
+  orbits.py      # TLE fetch + SGP4 propagation -> RA/Dec + pixel rates (orbital mode)
   _compat.py     # satsim config converter
 ```
 
@@ -51,7 +53,7 @@ src/sdasim/
 ## Dependencies
 
 - **Required**: torch>=2.2, numpy>=1.26, pyyaml>=6.0
-- **Optional**: astropy (SSTR7/Gaia/FITS), satsim (converter only)
+- **Optional**: astropy (SSTRC7/Gaia/FITS), satsim (converter only), satkit+httpx (`[orbital]` TLE mode)
 - **Dev**: pytest, ruff
 
 ## torch.compile() Notes

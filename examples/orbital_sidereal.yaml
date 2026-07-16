@@ -1,0 +1,56 @@
+# Orbital sidereal mode: TLE-based physics, sidereal tracking.
+# Sensor tracks the sky (stars are sharp), targets streak at full pixel rate.
+#
+# Requires: satkit, httpx, astropy (for SSTRC7)
+#
+# Usage:
+#   import sdasim
+#   scene = sdasim.Scene.from_yaml("examples/orbital_sidereal.yaml")
+#   images, annotations = scene.render_sequence()
+#   sdasim.io.write_sequence(images, annotations, "output/orbital_sidereal/")
+
+site:
+  latitude: 40.0
+  longitude: -105.0
+  altitude: 1600.0
+
+tracking: sidereal
+
+objects:
+  - norad_id: "25544"
+    mv: 2.0
+  - norad_id: "25994"
+    mv: 14.0
+
+sensor:
+  height: 512
+  width: 512
+  y_fov: 0.5
+  x_fov: 0.5
+  exposure: 2.0
+  gap: 0.5
+  num_frames: 8
+  zeropoint: 23.5
+  psf_sigma: 0.6
+  dark_current: 1.0
+  read_noise: 1.0
+  electronic_noise: 5.0
+  background_mv: 21.0
+  bias: 50.0
+  gain: 8.0
+  fwc: 100000.0
+  a2d_bias: 500.0
+  a2d_dtype: uint16
+
+stars:
+  mode: sstrc7
+  catalog_path: /opt/data/sstrc7
+
+star_motion:
+  temporal_osf: 100
+
+obs_time: "2026-03-21T04:00:00Z"
+seed: 42
+device: auto
+enable_shot_noise: true
+enable_read_noise: true

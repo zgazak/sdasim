@@ -14,7 +14,7 @@ import numpy as np
 import torch
 from torch import Tensor
 
-from sdasim.config import SceneConfig, load_config
+from sdasim.config import SceneConfig, TargetConfig, load_config
 from sdasim.device import resolve_device
 from sdasim.empirical import (
     BasicWhiteNoise,
@@ -83,6 +83,14 @@ class Scene:
         self.config = config
         self.device = resolve_device(config.device)
         self.sensor = config.sensor
+        self._object_states = None
+        # Star-field bookkeeping. `_star_mode` records the loaded catalog mode so
+        # render() knows whether the field is sky-backed (sstrc7) and can re-project
+        # it to a per-frame commanded pointing. `_reproj_cache` memoizes the most
+        # recent (ra, dec) -> (positions, intensities) so repeated renders at one
+        # pointing don't re-run the WCS projection.
+        self._star_mode: str | None = None
+        self._reproj_cache: tuple[tuple[float, float], tuple[Tensor, Tensor]] | None = None
 
         # Validate mode
         if config.mode == "rate_sidereal" and config.sidereal_start is None:
@@ -92,11 +100,33 @@ class Scene:
         if config.seed is not None:
             torch.manual_seed(config.seed)
 
-        # Load stars (slow, one-time)
-        self._load_stars(config)
+        # Orbital mechanics mode: objects present → derive everything from TLEs
+        if config.objects:
+            self._init_from_objects(config)
+        else:
+            # Load stars (slow, one-time)
+            self._load_stars(config)
 
-        # Pre-compute background PE per pixel
-        bg_pe_per_sec = mv_to_pe(self.sensor.zeropoint, self.sensor.background_mv)
+        # Catalog discovery (opt-in): auto-stream field satellites through the FOV.
+        # The TLE catalog is parsed once here (slow); per-frame propagation is fast.
+        self._catalog = None
+        if config.catalog.enabled:
+            if config.site is None:
+                raise ValueError("catalog.enabled=True requires site to be set")
+            from sdasim.orbits import load_catalog
+
+            self._catalog = load_catalog(config.catalog)
+
+        # Pre-compute background PE per pixel. background_mv is a SURFACE
+        # BRIGHTNESS (mag/arcsec^2), so scale the per-arcsec^2 flux by the pixel
+        # solid angle to get per-pixel electrons. (A point-source star needs no
+        # such factor — all its flux lands in its PSF regardless of pixel scale.)
+        pixel_area_arcsec2 = (self.sensor.y_fov * 3600.0 / self.sensor.height) * (
+            self.sensor.x_fov * 3600.0 / self.sensor.width
+        )
+        bg_pe_per_sec = (
+            mv_to_pe(self.sensor.zeropoint, self.sensor.background_mv) * pixel_area_arcsec2
+        )
         self.background_pe = float(bg_pe_per_sec * self.sensor.exposure)
 
         # Dark current: rate * exposure
@@ -159,6 +189,7 @@ class Scene:
         """Load star catalog based on config."""
         sc = config.stars
         sensor = config.sensor
+        self._star_mode = sc.mode
 
         if sc.mode == "bins":
             self.star_positions, self.star_intensities = generate_random_stars(
@@ -174,25 +205,203 @@ class Scene:
                 seed=config.seed,
                 device=self.device,
             )
-        elif sc.mode == "sstr7":
-            from sdasim.stars import load_sstr7
-
-            self.star_positions, self.star_intensities = load_sstr7(
-                height=sensor.height,
-                width=sensor.width,
-                y_fov=sensor.y_fov,
-                x_fov=sensor.x_fov,
-                ra=sc.ra,
-                dec=sc.dec,
-                rot=sc.rot,
-                zeropoint=sensor.zeropoint,
-                exposure=sensor.exposure,
-                catalog_path=sc.catalog_path,
-                pad_mult=sc.pad_mult,
-                device=self.device,
-            )
+        elif sc.mode == "sstrc7":
+            self.star_positions, self.star_intensities = self._load_sstrc7_stars(sc.ra, sc.dec)
         else:
             raise ValueError(f"Unknown star mode: {sc.mode}")
+
+    def _load_sstrc7_stars(self, ra: float, dec: float) -> tuple[Tensor, Tensor]:
+        """Project the SSTRC7 catalog onto the focal plane for a pointing center.
+
+        Split out from `_load_stars` so `render()` can re-project the (sky-backed)
+        star field to a per-frame commanded pointing without a full Scene rebuild.
+        Everything but the pointing (FOV, rotation, exposure, catalog path, mag cut)
+        is fixed at construction and read from config here.
+        """
+        from sdasim.stars import load_sstrc7
+
+        sc = self.config.stars
+        sensor = self.sensor
+        return load_sstrc7(
+            height=sensor.height,
+            width=sensor.width,
+            y_fov=sensor.y_fov,
+            x_fov=sensor.x_fov,
+            ra=ra,
+            dec=dec,
+            rot=sc.rot,
+            zeropoint=sensor.zeropoint,
+            exposure=sensor.exposure,
+            catalog_path=sc.catalog_path,
+            pad_mult=sc.pad_mult,
+            mv_max=sc.mv_max,
+            device=self.device,
+        )
+
+    def _stars_for_pointing(self, ra: float, dec: float) -> tuple[Tensor, Tensor]:
+        """Return the SSTRC7 star field for a pointing center, memoizing the last one.
+
+        The parsed catalog zones are cached in `sstrc7`, so a re-projection is just a
+        WCS transform over the in-FOV stars (~sub-millisecond), not a disk read; the
+        one-entry cache here additionally skips recompute when consecutive renders
+        share a pointing.
+        """
+        key = (round(float(ra), 9), round(float(dec), 9))
+        if self._reproj_cache is not None and self._reproj_cache[0] == key:
+            return self._reproj_cache[1]
+        stars = self._load_sstrc7_stars(ra, dec)
+        self._reproj_cache = (key, stars)
+        return stars
+
+    def _init_from_objects(self, config: SceneConfig) -> None:
+        """Initialize scene from orbital objects (TLE-based physics mode).
+
+        Fetches TLEs, propagates orbits, derives pointing/star field,
+        and populates star motion + target configs from orbital mechanics.
+        """
+        from datetime import datetime, timezone
+
+        from sdasim.orbits import compute_object_states
+
+        # Parse observation time
+        if config.obs_time:
+            obs_time = datetime.fromisoformat(config.obs_time.replace("Z", "+00:00"))
+        else:
+            obs_time = datetime.now(timezone.utc)
+
+        # Compute orbital states
+        states = compute_object_states(
+            config.objects, config.site, config.sensor, obs_time,
+        )
+        self._object_states = states
+
+        primary = states[0]
+        tracking = config.tracking or "rate_track"
+
+        # Set star field pointing from primary target.
+        # In rate_track mode, shift the star field center backward by half an
+        # exposure so that streak centroids (at mid-exposure) align with the
+        # satellite at image center (which is at the start-of-exposure position).
+        if tracking == "rate_track":
+            import math
+            half_exp = config.sensor.exposure / 2.0
+            config.stars.ra = primary.ra - math.degrees(primary.ra_rate) * half_exp
+            config.stars.dec = primary.dec - math.degrees(primary.dec_rate) * half_exp
+        else:
+            config.stars.ra = primary.ra
+            config.stars.dec = primary.dec
+
+        # Load star field for derived pointing
+        self._load_stars(config)
+
+        # Configure star motion based on tracking mode
+        if tracking == "rate_track":
+            # Stars appear to move opposite to primary target's motion
+            config.star_motion.translation = [-primary.row_rate, -primary.col_rate]
+        elif tracking == "sidereal":
+            # Stars are stationary, targets streak
+            config.star_motion.translation = [0.0, 0.0]
+            config.star_motion.temporal_osf = 1
+        else:
+            raise ValueError(f"Unknown tracking mode: {tracking!r}")
+
+        # Convert object states to target configs
+        targets = []
+        for i, st in enumerate(states):
+            if tracking == "rate_track":
+                if i == 0:
+                    # Primary is tracked → zero velocity
+                    vel = [0.0, 0.0]
+                else:
+                    # Secondary velocity relative to primary
+                    vel = [
+                        st.row_rate - primary.row_rate,
+                        st.col_rate - primary.col_rate,
+                    ]
+            else:
+                # Sidereal: full pixel rate
+                vel = [st.row_rate, st.col_rate]
+
+            origin = [
+                st.pixel_row / config.sensor.height,
+                st.pixel_col / config.sensor.width,
+            ]
+            targets.append(TargetConfig(
+                mode="line",
+                origin=origin,
+                velocity=vel,
+                mv=st.mv,
+            ))
+
+        config.targets = targets
+
+    def _resolve_mount_rate(self, **overrides: Any) -> tuple[float, float]:
+        """Resolve inertial mount RA/Dec rate (rad/s) for the current frame.
+
+        Precedence: explicit override / config (deg/s) > primary tracked object
+        (already rad/s) > sidereal (0).
+        """
+        cfg = self.config
+        has_explicit = (
+            "mount_ra_rate" in overrides
+            or "mount_dec_rate" in overrides
+            or cfg.mount_ra_rate
+            or cfg.mount_dec_rate
+        )
+        if has_explicit:
+            mr = overrides.get("mount_ra_rate", cfg.mount_ra_rate)
+            md = overrides.get("mount_dec_rate", cfg.mount_dec_rate)
+            return math.radians(mr), math.radians(md)
+        if self._object_states:
+            primary = self._object_states[0]
+            return primary.ra_rate, primary.dec_rate
+        return 0.0, 0.0
+
+    def _discover_for_frame(
+        self, frame_start: float, **overrides: Any
+    ) -> tuple[list, list[float]]:
+        """Run catalog discovery for this frame.
+
+        Returns ``(streaks, star_translation_px)`` where ``star_translation_px``
+        is the per-frame star drift [row_rate, col_rate] induced by the mount
+        (stars stream opposite the mount; sidereal → [0, 0]).
+        """
+        from datetime import datetime, timedelta, timezone
+
+        from sdasim.orbits import angular_to_pixel_rates, discover_streaks
+
+        cfg = self.config
+        sensor = self.sensor
+
+        # Pointing defaults to the loaded star-field center; overridable per frame
+        # (note: overriding it moves the satellites, not the pre-loaded star field).
+        point_ra = overrides.get("point_ra", cfg.stars.ra)
+        point_dec = overrides.get("point_dec", cfg.stars.dec)
+
+        base_iso = overrides.get("obs_time", cfg.obs_time)
+        if base_iso:
+            base = datetime.fromisoformat(base_iso.replace("Z", "+00:00"))
+        else:
+            base = datetime.now(timezone.utc)
+        t_frame = base + timedelta(seconds=frame_start)
+
+        mr_rad, md_rad = self._resolve_mount_rate(**overrides)
+
+        cat = cfg.catalog
+        pad = cat.psf_pad_px if cat.psf_pad_px is not None else 3.0 * sensor.psf_sigma
+
+        streaks = discover_streaks(
+            self._catalog, t_frame, cfg.site, sensor,
+            point_ra, point_dec, mr_rad, md_rad,
+            cat.albedo, pad,
+        )
+
+        # Stars stream opposite the mount; sidereal (mount=0) → static.
+        row_rate, col_rate = angular_to_pixel_rates(
+            mr_rad, md_rad, point_dec,
+            sensor.y_fov, sensor.x_fov, sensor.height, sensor.width,
+        )
+        return streaks, [-row_rate, -col_rate]
 
     def render(self, frame_idx: int = 0, **overrides: Any) -> tuple[Tensor, dict]:
         """Render a single frame -> (digital_image, metadata_dict)."""
@@ -239,10 +448,59 @@ class Scene:
         target_intensities = overrides.get("target_intensities", tgt_int)
         target_velocities = overrides.get("target_velocities", tgt_vel)
 
+        # Sky-backed star fields (sstrc7) track the commanded pointing per frame.
+        # When point_ra/point_dec are supplied (and the caller hasn't overridden the
+        # star field directly), re-project the catalog to that center so a sequence
+        # with moving pointing renders the correct stars for each frame instead of
+        # the field baked in at construction. Cheap: parsed zones are cached, so this
+        # is a WCS transform, not a disk read. Other modes (random `bins`) aren't
+        # sky-backed, so pointing overrides leave their field unchanged.
+        if (
+            self._star_mode == "sstrc7"
+            and "star_positions" not in overrides
+            and "star_intensities" not in overrides
+            and ("point_ra" in overrides or "point_dec" in overrides)
+        ):
+            star_positions, star_intensities = self._stars_for_pointing(
+                overrides.get("point_ra", self.config.stars.ra),
+                overrides.get("point_dec", self.config.stars.dec),
+            )
+
         center = (sensor.height / 2.0, sensor.width / 2.0)
 
+        # --- Catalog discovery: append auto-found field satellites as line targets ---
+        cat_star_translation = None
+        if self._catalog is not None:
+            streaks, cat_star_translation = self._discover_for_frame(frame_start, **overrides)
+            if streaks:
+                extra_pos = torch.tensor(
+                    [[s.pixel_row, s.pixel_col] for s in streaks],
+                    dtype=torch.float32, device=self.device,
+                )
+                extra_int = torch.tensor(
+                    [mv_to_pe(sensor.zeropoint, s.mv) * sensor.exposure for s in streaks],
+                    dtype=torch.float32, device=self.device,
+                )
+                extra_vel = torch.tensor(
+                    [[s.row_rate, s.col_rate] for s in streaks],
+                    dtype=torch.float32, device=self.device,
+                )
+                target_positions = torch.cat([target_positions, extra_pos], dim=0)
+                target_intensities = torch.cat([target_intensities, extra_int], dim=0)
+                target_velocities = torch.cat([target_velocities, extra_vel], dim=0)
+
         # --- Mode dispatch ---
-        if self.config.mode == "rate_sidereal":
+        if self._catalog is not None:
+            # Catalog mode: mount rate drives star streaking; targets (configured +
+            # discovered) already carry sensor-frame apparent velocities, used as-is.
+            star_vel = cat_star_translation
+            star_rot = 0.0
+            moving = star_vel[0] != 0.0 or star_vel[1] != 0.0
+            star_osf = sm.temporal_osf if moving else 1
+            star_positions = _apply_star_offset(
+                star_positions, star_vel, 0.0, frame_start, center,
+            )
+        elif self.config.mode == "rate_sidereal":
             # Target velocities in config are inertial (star-fixed frame).
             # In rate-track frames, convert to sensor frame:
             #   apparent_vel = V_inertial + translation
@@ -291,6 +549,8 @@ class Scene:
         # Target velocities: pass None if no targets
         if target_velocities.shape[0] == 0:
             target_velocities = None
+
+        defer_read_noise = overrides.get("defer_read_noise", False)
 
         use_empirical = sensor.psf_model == "empirical" or sensor.noise_model == "empirical"
         psf_params = None
@@ -368,6 +628,7 @@ class Scene:
                 a2d_dtype=sensor.a2d_dtype,
                 enable_shot_noise=self.config.enable_shot_noise,
                 enable_read_noise=self.config.enable_read_noise,
+                defer_read_noise=defer_read_noise,
                 star_velocity=star_vel,
                 star_rotation=star_rot,
                 target_velocities=target_velocities,
@@ -376,7 +637,9 @@ class Scene:
             )
 
         # Frame mode label
-        if self.config.mode == "rate_sidereal":
+        if self._catalog is not None:
+            frame_mode = "catalog"
+        elif self.config.mode == "rate_sidereal":
             frame_mode = "sidereal" if is_sidereal else "rate_track"
         else:
             frame_mode = None
@@ -396,6 +659,8 @@ class Scene:
             ),  # [[row_rate, col_rate], ...] px/sec
             "exposure": sensor.exposure,  # seconds
             "obs_time": self.config.obs_time,
+            "point_ra": overrides.get("point_ra", self.config.stars.ra),  # deg (star-field center)
+            "point_dec": overrides.get("point_dec", self.config.stars.dec),  # deg
             "gain": sensor.gain,
             "read_noise": sensor.read_noise,
             "dark_current": sensor.dark_current,
