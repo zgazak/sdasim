@@ -71,13 +71,18 @@ def pupil_samples(k: int, obscuration: float, device=None) -> tuple[Tensor, Tens
     Each ring's node radius is its RMS radius and its weight is its exact area
     fraction (split evenly among its points), so the set integrates constants
     and rho^2 over the pupil exactly: flux and blur second moments are unbiased
-    at any K. Weights sum to 1. The actual count K' lands within a few points
-    of the request. Point columns are (px, py).
+    at any K. The trade-off of RMS-node placement is that the outermost node
+    sits ~dr/2 inside the geometric rim, so a donut's outer edge reads a few
+    percent small at coarse rungs (the deficit shrinks as K grows); flux,
+    second moments, and HFD are unaffected. Weights sum to 1. The actual count
+    K' lands within a few points of the request. Point columns are (px, py).
     """
     eps = obscuration
     area = math.pi * (1.0 - eps * eps)
     dr = math.sqrt(area / max(k, 4))
-    n_rings = max(1, round((1.0 - eps) / dr))
+    # At least 2 rings: a single ring renders a blur DISC as a hollow circle
+    # (flux/moments stay exact, but the shape is wrong at coarse rungs).
+    n_rings = max(2, round((1.0 - eps) / dr))
     dr = (1.0 - eps) / n_rings
     pts, wts = [], []
     for j in range(n_rings):
@@ -194,6 +199,16 @@ class OpticsModel:
         self.last_k: int = 1
         self.last_blur_px: float = 0.0
 
+    def blur_radius_px(self, defocus_um: float = 0.0) -> float:
+        """Worst-case geometric blur radius (px) at a commanded focal shift.
+
+        Includes the static aberrations and field curvature. Useful to size
+        pads/margins for sources just outside the frame whose defocused flux
+        still lands in it.
+        """
+        c4 = abs(self._c4_static_um + defocus_um * self._c4_per_defocus_um) + abs(self._fc_um)
+        return self._blur_radius_px(c4)
+
     def _blur_radius_px(self, c4_um: float) -> float:
         """Upper-bound blur radius (px) for a defocus coefficient plus statics."""
         grad_max = {
@@ -208,10 +223,11 @@ class OpticsModel:
             r += abs(c_um) * grad_max[term]
         return r * self._px_per_um
 
-    def _k_needed(self, blur_px: float) -> int:
+    def _k_needed(self, blur_px: float, sigma: float | None = None) -> int:
         """Samples needed so image-plane spacing stays <= 2*sigma (no rings)."""
+        s = self.sigma if sigma is None else sigma
         e2 = self.cfg.obscuration**2
-        return max(4, math.ceil(math.pi * (1.0 - e2) * blur_px**2 / (4.0 * self.sigma**2)))
+        return max(4, math.ceil(math.pi * (1.0 - e2) * blur_px**2 / (4.0 * s**2)))
 
     def expand(
         self,
@@ -219,29 +235,47 @@ class OpticsModel:
         intensities: Tensor,
         defocus_um: float | Tensor,
         center: tuple[float, float],
+        psf_sigma: float | Tensor | None = None,
     ) -> tuple[Tensor, Tensor]:
         """Expand (M, 2)/(M,) sources into (M*K, 2)/(M*K,) defocused sub-sources.
 
         ``defocus_um`` may be a scalar tensor to keep gradients to the focus
-        command. Flux is conserved exactly (sub-sources carry the pupil
-        quadrature weights, which sum to 1). Returns the inputs unchanged when
-        the total blur is negligible or M == 0.
+        command; when it carries gradients the negligible-blur passthrough is
+        disabled so the focus command always stays in the autograd graph.
+        ``psf_sigma`` should be the sigma the sub-sources will be splatted with
+        when it differs from the construction-time value — the passthrough gate
+        and sampling-density (rung) choice depend on it. Flux is conserved
+        exactly (sub-sources carry the pupil quadrature weights, which sum
+        to 1). Returns the inputs unchanged when nothing needs expanding.
         """
-        m = positions.shape[0]
-        if m == 0:
-            return positions, intensities
+        if isinstance(defocus_um, Tensor):
+            defocus_um = defocus_um.to(dtype=positions.dtype, device=positions.device)
+            d_um = float(defocus_um.detach().reshape(()).item())
+            needs_grad = defocus_um.requires_grad and torch.is_grad_enabled()
+        else:
+            d_um = float(defocus_um)
+            needs_grad = False
+        if psf_sigma is None:
+            sigma = self.sigma
+        elif isinstance(psf_sigma, Tensor):
+            sigma = float(psf_sigma.detach().reshape(()).item())
+        else:
+            sigma = float(psf_sigma)
 
-        d_um = float(defocus_um) if not isinstance(defocus_um, Tensor) else float(defocus_um.item())
-        c4_worst = abs(self._c4_static_um + d_um * self._c4_per_defocus_um) + abs(self._fc_um)
-        blur_px = self._blur_radius_px(c4_worst)
+        blur_px = self.blur_radius_px(d_um)
         self.last_blur_px = blur_px
-        if blur_px < self.SKIP_BLUR_SIGMA * self.sigma:
+        if blur_px < self.SKIP_BLUR_SIGMA * sigma and not needs_grad:
             self.last_k = 1
             return positions, intensities
 
-        rung = next((r for r in self._rungs if r["k"] >= self._k_needed(blur_px)), self._rungs[-1])
-        k = rung["k"]
-        self.last_k = k
+        rung = next(
+            (r for r in self._rungs if r["k"] >= self._k_needed(blur_px, sigma)), self._rungs[-1]
+        )
+        self.last_k = rung["k"]
+
+        m = positions.shape[0]
+        if m == 0:
+            return positions, intensities
 
         # Per-source defocus coefficient (microns): static + commanded (+ field
         # curvature, quadratic in boresight-relative field radius).

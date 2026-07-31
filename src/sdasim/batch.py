@@ -185,10 +185,11 @@ def _collect_cached(
     return positions, intensities, frame_ids, per_source_sigma
 
 
-def _render_batch_empirical(scenes: Sequence[Scene]) -> BatchRenderResult:
-    """Empirical-mode batch: each scene has its own sampled PSF kernel + per-scene FFT, so it
-    can't fuse into a single splat like the Gaussian path. Render each via the full empirical
-    pipeline (Scene.render_signals) and stack. FFTs still run on-GPU per scene."""
+def _render_batch_per_scene(scenes: Sequence[Scene]) -> BatchRenderResult:
+    """Per-scene fallback batch: render each scene via its full Scene.render_signals
+    pipeline and stack. Used for empirical scenes (per-scene sampled PSF kernel +
+    FFT can't fuse into a single splat) and optics-enabled scenes (per-source
+    pupil expansion isn't in the fused source cache)."""
     device = scenes[0].device
     digs, ss, ts, pf = [], [], [], []
     for s in scenes:
@@ -240,11 +241,16 @@ def render_scene_batch(scenes: Sequence[Scene]) -> BatchRenderResult:
                 f"got mode={s.config.mode}"
             )
 
-    # Empirical scenes use per-scene sampled kernels + FFT -> render per-scene and stack.
+    # Empirical scenes (per-scene sampled kernels + FFT) and optics-enabled
+    # scenes (per-source pupil expansion) can't use the fused source cache ->
+    # render per-scene and stack.
     if any(
-        s.sensor.psf_model == "empirical" or s.sensor.noise_model == "empirical" for s in scenes
+        s.sensor.psf_model == "empirical"
+        or s.sensor.noise_model == "empirical"
+        or s.optics is not None
+        for s in scenes
     ):
-        return _render_batch_empirical(scenes)
+        return _render_batch_per_scene(scenes)
 
     # Ensure caches exist (lazy, idempotent on pool scenes).
     for s in scenes:

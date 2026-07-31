@@ -197,7 +197,7 @@ def render_frame(
 
     # Defocus/aberration expansion composes with motion expansion (pupil x time).
     if optics is not None:
-        exp_pos, exp_int = optics.expand(exp_pos, exp_int, defocus_um, center)
+        exp_pos, exp_int = optics.expand(exp_pos, exp_int, defocus_um, center, psf_sigma=psf_sigma)
 
     star_signal = splat_gaussians(height, width, exp_pos, exp_int, psf_sigma)
 
@@ -231,7 +231,9 @@ def render_frame(
         tgt_exp_pos, tgt_exp_int = target_positions, target_intensities
 
     if optics is not None:
-        tgt_exp_pos, tgt_exp_int = optics.expand(tgt_exp_pos, tgt_exp_int, defocus_um, center)
+        tgt_exp_pos, tgt_exp_int = optics.expand(
+            tgt_exp_pos, tgt_exp_int, defocus_um, center, psf_sigma=psf_sigma
+        )
 
     target_signal = splat_gaussians(height, width, tgt_exp_pos, tgt_exp_int, psf_sigma)
 

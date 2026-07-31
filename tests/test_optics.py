@@ -260,6 +260,76 @@ class TestSceneIntegration:
             Scene(cfg)
 
 
+class TestReviewRegressions:
+    """Pins for defects found in adversarial review of the initial diff."""
+
+    def test_batch_render_applies_optics(self):
+        """render_scene_batch must not bypass the optics model (was: silent sharp stars)."""
+        from sdasim.batch import render_scene_batch
+
+        def build():
+            cfg = SceneConfig()
+            cfg.seed = 3
+            cfg.sensor.height = cfg.sensor.width = 128
+            cfg.sensor.psf_sigma = SIGMA
+            cfg.optics = OpticsConfig(
+                enabled=True,
+                fnumber=FNUM,
+                obscuration=0.35,
+                pixel_pitch_um=PITCH,
+                max_defocus_um=2000.0,
+                aberrations=AberrationsConfig(defocus=2.0),
+            )
+            return Scene(cfg)
+
+        scene = build()
+        _, star_ref, _, _ = scene.render_signals(0)
+        batch = render_scene_batch([build()])
+        assert torch.allclose(batch.star_signal[0], star_ref)
+
+    def test_gradient_survives_near_focus(self):
+        """A grad-tracking defocus inside the skip zone must stay in the graph."""
+        model = make_model()
+        defocus = torch.tensor(30.0, requires_grad=True)  # blur < 0.3*sigma
+        img = render_star(model, defocus)
+        assert model.last_k > 1  # passthrough disabled for grad-tracking input
+        (img**2).sum().backward()
+        assert defocus.grad is not None and torch.isfinite(defocus.grad)
+
+    def test_psf_sigma_override_drives_gate_and_k(self):
+        """The per-render psf_sigma must inform the skip gate and rung choice."""
+        model = make_model()
+        pos = torch.tensor([[H / 2.0, W / 2.0]])
+        ints = torch.tensor([1000.0])
+        # blur ~0.28 px: negligible vs sigma=1.5, significant vs sigma=0.5
+        model.expand(pos, ints, 40.0, CENTER)
+        assert model.last_k == 1
+        model.expand(pos, ints, 40.0, CENTER, psf_sigma=0.5)
+        assert model.last_k > 1
+        # Sharper rendered PSF needs denser pupil sampling at the same defocus
+        model.expand(pos, ints, 2000.0, CENTER)
+        k_default = model.last_k
+        model.expand(pos, ints, 2000.0, CENTER, psf_sigma=0.75)
+        assert model.last_k > k_default
+
+    def test_defocus_tensor_dtype_normalized(self):
+        model = make_model(field_curvature=1.0)
+        pos = torch.tensor([[40.0, 40.0]])
+        ints = torch.tensor([1000.0])
+        epos, _ = model.expand(pos, ints, torch.tensor(800.0, dtype=torch.float64), CENTER)
+        assert epos.dtype == torch.float32
+
+    def test_empty_frame_reports_frame_level_k(self):
+        """m==0 must not leave stale (or misleadingly reset) sampling metadata."""
+        model = make_model()
+        empty_pos = torch.zeros(0, 2)
+        empty_int = torch.zeros(0)
+        model.expand(empty_pos, empty_int, 2000.0, CENTER)
+        assert model.last_k > 1  # the K this frame's blur would use
+        model.expand(empty_pos, empty_int, 0.0, CENTER)
+        assert model.last_k == 1
+
+
 class TestConfigLoading:
     def test_yaml_round_trip(self, tmp_path):
         yaml_text = """

@@ -408,6 +408,13 @@ class Scene:
 
         cat = cfg.catalog
         pad = cat.psf_pad_px if cat.psf_pad_px is not None else 3.0 * sensor.psf_sigma
+        if self.optics is not None:
+            # Defocused sources spill flux well past 3*sigma: widen the entry/exit
+            # pad by the frame's blur radius so edge streaks aren't culled while
+            # their donut would still land in-frame.
+            d = overrides.get("defocus_um", 0.0)
+            d = float(d.detach().reshape(()).item()) if isinstance(d, Tensor) else float(d)
+            pad += self.optics.blur_radius_px(d)
 
         streaks = discover_streaks(
             self._catalog, t_frame, cfg.site, sensor,
@@ -694,7 +701,9 @@ class Scene:
             "x_fov": sensor.x_fov,
             "gap": sensor.gap,
             "psf_sigma": float(psf_sigma) if not isinstance(psf_sigma, float) else psf_sigma,
-            "defocus_um": float(defocus_um),
+            "defocus_um": (
+                float(defocus_um.detach()) if isinstance(defocus_um, Tensor) else float(defocus_um)
+            ),
             "defocus_blur_px": self.optics.last_blur_px if self.optics is not None else 0.0,
             "pupil_samples": self.optics.last_k if self.optics is not None else 1,
             "zeropoint": sensor.zeropoint,
