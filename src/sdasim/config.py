@@ -137,6 +137,47 @@ class CatalogConfig:
 
 
 @dataclass
+class AberrationsConfig:
+    """Static wavefront aberrations in waves RMS (Noll-normalized Zernikes).
+
+    These are the numbers an interferometer or a Zemax "Zernike Standard"
+    analysis reports (RMS-normalized circular-pupil coefficients — NOT Fringe
+    Zernikes). Applied once per Scene; commanded per-frame defocus rides on
+    top via the ``defocus_um`` render override.
+    """
+
+    defocus: float = 0.0  # Z4: residual best-focus error
+    astig_0: float = 0.0  # Z6: elongates along rows/cols; axis flips across focus
+    astig_45: float = 0.0  # Z5: same, along the diagonals
+    coma_x: float = 0.0  # Z8: comatic flare along columns
+    coma_y: float = 0.0  # Z7: comatic flare along rows
+    spherical: float = 0.0  # Z11: makes intra/extra donut profiles differ
+    # Extra defocus (waves RMS) at the field CORNER, growing quadratically with
+    # boresight-relative field radius — field curvature / focal-plane bow.
+    field_curvature: float = 0.0
+
+
+@dataclass
+class OpticsConfig:
+    """Pupil geometry for the geometric defocus/aberration model (optics.py).
+
+    Disabled by default; when disabled the render path is untouched. Enabling
+    with zero aberrations and ``defocus_um=0`` is also free — the model
+    collapses to the plain Gaussian PSF until something actually blurs.
+    """
+
+    enabled: bool = False
+    fnumber: float = 8.0  # working f-number of the optical system
+    obscuration: float = 0.0  # secondary diameter / aperture diameter (0 = clear)
+    wavelength_nm: float = 550.0  # converts waves RMS <-> microns of wavefront
+    pixel_pitch_um: float = 9.0  # detector pixel pitch, microns
+    max_defocus_um: float = 500.0  # largest commanded |defocus_um| expected; sizes
+    #                                 the pupil-sample ladder (larger commands still
+    #                                 render, at the top rung's sampling density)
+    aberrations: AberrationsConfig = field(default_factory=AberrationsConfig)
+
+
+@dataclass
 class SceneConfig:
     sensor: SensorConfig = field(default_factory=SensorConfig)
     stars: StarFieldConfig = field(default_factory=StarFieldConfig)
@@ -157,6 +198,8 @@ class SceneConfig:
     catalog: CatalogConfig = field(default_factory=CatalogConfig)
     mount_ra_rate: float = 0.0   # deg/s, inertial; 0.0 == sidereal track
     mount_dec_rate: float = 0.0  # deg/s
+    # --- geometric defocus/aberration model (additions) ---
+    optics: OpticsConfig = field(default_factory=OpticsConfig)
 
 
 _NESTED_TYPES: dict[str, type] = {}
@@ -174,6 +217,8 @@ def _init_nested_types() -> None:
                 "SiteConfig": SiteConfig,
                 "ObjectConfig": ObjectConfig,
                 "CatalogConfig": CatalogConfig,
+                "OpticsConfig": OpticsConfig,
+                "AberrationsConfig": AberrationsConfig,
             }
         )
 
@@ -185,6 +230,8 @@ _FIELD_TYPE_MAP: dict[str, type] = {
     "star_motion": StarMotionConfig,
     "site": SiteConfig,
     "catalog": CatalogConfig,
+    "optics": OpticsConfig,
+    "aberrations": AberrationsConfig,
 }
 
 

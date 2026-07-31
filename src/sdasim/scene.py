@@ -24,6 +24,7 @@ from sdasim.empirical import (
     render_frame_empirical,
 )
 from sdasim.fpa import mv_to_pe
+from sdasim.optics import OpticsModel
 from sdasim.render import render_frame
 from sdasim.stars import generate_random_stars
 from sdasim.targets import compute_target_positions
@@ -134,6 +135,24 @@ class Scene:
 
         # Bias
         self.bias_pe = self.sensor.bias
+
+        # Geometric defocus/aberration model (opt-in): precompute the pupil
+        # sample ladder once; per-frame commanded defocus is a render override.
+        self.optics = None
+        if config.optics.enabled:
+            if self.sensor.psf_model == "empirical" or self.sensor.noise_model == "empirical":
+                raise ValueError(
+                    "optics.enabled requires psf_model='gaussian' and noise_model='basic' — "
+                    "the empirical render path convolves a fixed data-driven kernel and "
+                    "cannot be defocused geometrically"
+                )
+            self.optics = OpticsModel(
+                config.optics,
+                self.sensor.psf_sigma,
+                self.sensor.height,
+                self.sensor.width,
+                device=self.device,
+            )
 
         # Empirical (opt-in) bases — loaded once; default path leaves these None
         self._np_rng = np.random.default_rng(config.seed)
@@ -442,6 +461,11 @@ class Scene:
 
         # Allow overrides
         psf_sigma = overrides.get("psf_sigma", sensor.psf_sigma)
+        defocus_um = overrides.get("defocus_um", 0.0)
+        if self.optics is None and not (
+            isinstance(defocus_um, (int, float)) and defocus_um == 0.0
+        ):
+            raise ValueError("defocus_um override requires optics.enabled in the scene config")
         star_positions = overrides.get("star_positions", self.star_positions)
         star_intensities = overrides.get("star_intensities", self.star_intensities)
         target_positions = overrides.get("target_positions", tgt_pos)
@@ -634,6 +658,8 @@ class Scene:
                 target_velocities=target_velocities,
                 t_osf=star_osf,
                 exposure=sensor.exposure,
+                optics=self.optics,
+                defocus_um=defocus_um,
             )
 
         # Frame mode label
@@ -668,6 +694,9 @@ class Scene:
             "x_fov": sensor.x_fov,
             "gap": sensor.gap,
             "psf_sigma": float(psf_sigma) if not isinstance(psf_sigma, float) else psf_sigma,
+            "defocus_um": float(defocus_um),
+            "defocus_blur_px": self.optics.last_blur_px if self.optics is not None else 0.0,
+            "pupil_samples": self.optics.last_k if self.optics is not None else 1,
             "zeropoint": sensor.zeropoint,
             "a2d_dtype": sensor.a2d_dtype,
             "psf_model": sensor.psf_model,

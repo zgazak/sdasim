@@ -26,6 +26,7 @@ src/sdasim/
   sstrc7.py      # Native SSTRC7 catalog reader (binary I/O + WCS projection)
   stars.py       # Star catalogs: random bins, SSTRC7, Gaia (lazy import)
   targets.py     # Target trajectory computation
+  optics.py      # Geometric defocus/aberration model (pupil-sampled Zernike ray offsets)
   device.py      # GPU-first device management
   io.py          # Optional FITS/JSON writers (not in hot path)
   orbits.py      # TLE fetch + SGP4 propagation -> RA/Dec + pixel rates (orbital mode)
@@ -42,6 +43,13 @@ src/sdasim/
 
 3. **Motion blur via sub-source expansion**: `expand_motion()` converts N sources with
    velocities into N×t_osf stationary sub-sources. Fully vectorized, no Python loops.
+
+3b. **Defocus via the same trick, over pupil area**: `optics.py` (opt-in via
+   `optics.enabled`) expands each source into K sub-sources displaced by the
+   transverse ray aberration of K annular-pupil samples — donuts with central
+   obscuration, astigmatism/coma/spherical (waves RMS config), field curvature.
+   Commanded focus is the `defocus_um` render override, differentiable end-to-end.
+   Zero cost when in focus or disabled. See optics.py's docstring for the physics.
 
 4. **Differentiable through everything**: Positions, intensities, sigma all have gradients.
    Poisson noise uses STE, Gaussian noise uses reparameterization trick.

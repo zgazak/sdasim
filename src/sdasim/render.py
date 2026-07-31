@@ -7,6 +7,7 @@ Pipeline: splat stars -> splat targets -> add background/DC/bias ->
 from __future__ import annotations
 
 import math
+from typing import TYPE_CHECKING
 
 import torch
 from torch import Tensor
@@ -14,6 +15,9 @@ from torch import Tensor
 from sdasim.fpa import analog_to_digital
 from sdasim.noise import gaussian_noise, poisson_noise
 from sdasim.splat import splat_gaussians
+
+if TYPE_CHECKING:
+    from sdasim.optics import OpticsModel
 
 
 def expand_motion(
@@ -127,6 +131,8 @@ def render_frame(
     t_osf: int = 1,
     target_t_osf: int | None = None,
     exposure: float = 1.0,
+    optics: "OpticsModel | None" = None,
+    defocus_um: float | Tensor = 0.0,
 ) -> tuple[Tensor, Tensor, Tensor]:
     """Render a single frame through the full pipeline.
 
@@ -153,6 +159,10 @@ def render_frame(
         target_velocities: (T, 2) per-target velocities in pixels/sec, or None.
         t_osf: Temporal oversampling factor for motion blur.
         exposure: Exposure time in seconds.
+        optics: Optional OpticsModel; expands stars and targets into defocused
+            sub-sources (composes with motion expansion).
+        defocus_um: Commanded focal shift from best focus in microns (may be a
+            scalar tensor to keep gradients to the focus command).
 
     Returns:
         (digital, star_signal, target_signal): Digital image, star-only PE, target-only PE.
@@ -185,6 +195,10 @@ def render_frame(
     else:
         exp_pos, exp_int = star_positions, star_intensities
 
+    # Defocus/aberration expansion composes with motion expansion (pupil x time).
+    if optics is not None:
+        exp_pos, exp_int = optics.expand(exp_pos, exp_int, defocus_um, center)
+
     star_signal = splat_gaussians(height, width, exp_pos, exp_int, psf_sigma)
 
     # --- Targets: per-target within-frame motion blur ---
@@ -213,15 +227,13 @@ def render_frame(
             tgt_osf,
             center,
         )
-        target_signal = splat_gaussians(height, width, tgt_exp_pos, tgt_exp_int, psf_sigma)
     else:
-        target_signal = splat_gaussians(
-            height,
-            width,
-            target_positions,
-            target_intensities,
-            psf_sigma,
-        )
+        tgt_exp_pos, tgt_exp_int = target_positions, target_intensities
+
+    if optics is not None:
+        tgt_exp_pos, tgt_exp_int = optics.expand(tgt_exp_pos, tgt_exp_int, defocus_um, center)
+
+    target_signal = splat_gaussians(height, width, tgt_exp_pos, tgt_exp_int, psf_sigma)
 
     # Combine signal
     signal = star_signal + target_signal
