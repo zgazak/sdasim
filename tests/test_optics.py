@@ -78,18 +78,36 @@ def blur_radius_px(defocus_um: float) -> float:
 
 
 class TestPupilSamples:
-    def test_area_uniform_annulus(self):
-        p = pupil_samples(256, obscuration=0.35)
+    def test_quadrature_is_exact_for_flux_and_second_moment(self):
+        p, w = pupil_samples(256, obscuration=0.35)
+        assert abs(p.shape[0] - 256) < 24  # ring rounding lands near the request
+        assert abs(w.sum().item() - 1.0) < 1e-6
         rho = p.norm(dim=1)
         assert rho.min() >= 0.35
         assert rho.max() <= 1.0 + 1e-6
-        # Area-uniform: mean(rho^2) == (eps^2 + 1)/2 exactly by construction
-        assert abs((rho**2).mean().item() - (0.35**2 + 1.0) / 2.0) < 1e-5
+        # RMS nodes + area weights integrate rho^2 exactly: (eps^2 + 1)/2
+        weighted = (w * rho**2).sum().item()
+        assert abs(weighted - (0.35**2 + 1.0) / 2.0) < 1e-6
 
     def test_antipodal_symmetry(self):
-        p = pupil_samples(64, obscuration=0.2)
-        half = p.shape[0] // 2
-        assert torch.allclose(p[:half], -p[half:])
+        """Every sample's antipode is in the set (exact parity across focus).
+
+        Distances via explicit broadcasting — torch.cdist's matmul path loses
+        ~3e-4 of precision on near-zero distances in float32.
+        """
+        for eps in (0.0, 0.2, 0.35):
+            p, _ = pupil_samples(64, obscuration=eps)
+            gap = (p.unsqueeze(1) + p.unsqueeze(0)).norm(dim=-1).min(dim=1).values.max()
+            assert gap.item() < 1e-5
+
+    def test_outer_ring_is_closed_circle(self):
+        """The rim samples are evenly spaced — no iris-blade scalloping."""
+        p, _ = pupil_samples(256, obscuration=0.35)
+        rho = p.norm(dim=1)
+        rim = p[rho > rho.max() - 1e-5]
+        theta = torch.atan2(rim[:, 1], rim[:, 0]).sort().values
+        gaps = torch.diff(theta)
+        assert torch.allclose(gaps, gaps[0].expand_as(gaps), atol=1e-4)
 
 
 class TestExpand:

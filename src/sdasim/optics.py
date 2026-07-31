@@ -32,8 +32,8 @@ Conventions:
     For a symmetric pupil the model is exactly blind to the sign of pure
     defocus (and of coma — a parity fact that matches real star tests);
     astigmatism and spherical aberration do distinguish the two sides.
-  * Pupil samples come in antipodal pairs (p and -p), so that parity is exact
-    rather than approximate.
+  * The pupil sample set is exactly inversion-symmetric (every p has its -p),
+    so that parity is exact rather than approximate.
 
 Validity: this is ray optics regularized by the in-focus Gaussian. It is
 faithful once the geometric blur dominates diffraction (W020 above ~1 wave);
@@ -58,21 +58,43 @@ _GOLDEN_ANGLE = math.pi * (3.0 - math.sqrt(5.0))
 _STATIC_TERMS = ("astig_0", "astig_45", "coma_x", "coma_y", "spherical")
 
 
-def pupil_samples(k: int, obscuration: float, device=None) -> Tensor:
-    """K deterministic, area-uniform samples of the annular pupil, shape (K, 2).
+def pupil_samples(k: int, obscuration: float, device=None) -> tuple[Tensor, Tensor]:
+    """~K deterministic annular-pupil quadrature nodes: (points (K', 2), weights (K',)).
 
-    Golden-angle spiral over pupil *area* (uniform in rho^2), restricted to
-    the annulus [obscuration, 1]. Built as K/2 points plus their antipodes so
-    the set is exactly inversion-symmetric (K is rounded up to even).
-    Columns are (px, py).
+    Concentric equal-width rings; each ring carries an even point count at a
+    golden-angle phase offset from its neighbors. The outermost ring is a
+    closed, evenly spaced circle, so a defocused donut's rim renders smoothly —
+    a spiral's ragged boundary would scallop it into "iris blade" lumps. Even
+    per-ring counts make the set exactly inversion-symmetric (every point's
+    antipode is present), which keeps the model's parity properties exact.
+
+    Each ring's node radius is its RMS radius and its weight is its exact area
+    fraction (split evenly among its points), so the set integrates constants
+    and rho^2 over the pupil exactly: flux and blur second moments are unbiased
+    at any K. Weights sum to 1. The actual count K' lands within a few points
+    of the request. Point columns are (px, py).
     """
-    half = max(1, (k + 1) // 2)
-    i = torch.arange(half, dtype=torch.float32, device=device)
-    e2 = obscuration**2
-    rho = torch.sqrt(e2 + (1.0 - e2) * (i + 0.5) / half)
-    theta = i * _GOLDEN_ANGLE
-    p = torch.stack([rho * torch.cos(theta), rho * torch.sin(theta)], dim=1)
-    return torch.cat([p, -p], dim=0)
+    eps = obscuration
+    area = math.pi * (1.0 - eps * eps)
+    dr = math.sqrt(area / max(k, 4))
+    n_rings = max(1, round((1.0 - eps) / dr))
+    dr = (1.0 - eps) / n_rings
+    pts, wts = [], []
+    for j in range(n_rings):
+        lo = eps + j * dr
+        hi = lo + dr
+        rho = math.sqrt((lo * lo + hi * hi) / 2.0)  # RMS node: exact second moment
+        m = max(2, 2 * round(math.pi * rho / dr))  # even count, ~dr azimuthal spacing
+        theta = (
+            j * _GOLDEN_ANGLE
+            + 2.0 * math.pi * torch.arange(m, dtype=torch.float64, device=device) / m
+        )
+        pts.append(rho * torch.stack([torch.cos(theta), torch.sin(theta)], dim=1))
+        ring_area = math.pi * (hi * hi - lo * lo)
+        wts.append(torch.full((m,), ring_area / (area * m), dtype=torch.float64, device=device))
+    p = torch.cat(pts, dim=0)
+    w = torch.cat(wts, dim=0)
+    return p.to(torch.float32), (w / w.sum()).to(torch.float32)
 
 
 def _zernike_grad(term: str, p: Tensor) -> Tensor:
@@ -104,7 +126,7 @@ def _zernike_grad(term: str, p: Tensor) -> Tensor:
 class OpticsModel:
     """Precomputed pupil geometry for ``expand()`` (built once per Scene).
 
-    Precomputes a small ladder of pupil sample sets (K = 4, 16, 64, ... up to
+    Precomputes a small ladder of pupil sample sets (K = 4, 8, 16, ... up to
     what ``max_defocus_um`` needs) and, per rung, the image-plane offsets of
     the static non-defocus aberrations plus the defocus gradient direction.
     ``expand()`` then only scales/adds precomputed tensors, picks the smallest
@@ -155,17 +177,19 @@ class OpticsModel:
         self._rungs: list[dict] = []
         k = 4
         while True:
-            p = pupil_samples(k, cfg.obscuration, device=device)
+            p, w = pupil_samples(k, cfg.obscuration, device=device)
             grad4 = _zernike_grad("defocus", p) * self._px_per_um  # px per micron of c4
             static = torch.zeros_like(p)
             for c_um, term in zip(self._static_um, _STATIC_TERMS):
                 if c_um != 0.0:
                     static = static + c_um * _zernike_grad(term, p) * self._px_per_um
             # (px, py) gradient components -> (row, col) image offsets.
-            self._rungs.append({"k": p.shape[0], "grad4": grad4.flip(1), "static": static.flip(1)})
+            self._rungs.append(
+                {"k": p.shape[0], "w": w, "grad4": grad4.flip(1), "static": static.flip(1)}
+            )
             if k >= k_top or k >= 4096:
                 break
-            k *= 4
+            k *= 2
         # Set by each expand() call; read by Scene for render metadata.
         self.last_k: int = 1
         self.last_blur_px: float = 0.0
@@ -199,8 +223,9 @@ class OpticsModel:
         """Expand (M, 2)/(M,) sources into (M*K, 2)/(M*K,) defocused sub-sources.
 
         ``defocus_um`` may be a scalar tensor to keep gradients to the focus
-        command. Flux is conserved (each sub-source carries 1/K). Returns the
-        inputs unchanged when the total blur is negligible or M == 0.
+        command. Flux is conserved exactly (sub-sources carry the pupil
+        quadrature weights, which sum to 1). Returns the inputs unchanged when
+        the total blur is negligible or M == 0.
         """
         m = positions.shape[0]
         if m == 0:
@@ -230,5 +255,5 @@ class OpticsModel:
 
         offsets = rung["static"].unsqueeze(0) + c4_um * rung["grad4"].unsqueeze(0)
         expanded_pos = (positions.unsqueeze(1) + offsets).reshape(-1, 2)
-        expanded_int = (intensities / k).unsqueeze(1).expand(m, k).reshape(-1)
+        expanded_int = (intensities.unsqueeze(1) * rung["w"].unsqueeze(0)).reshape(-1)
         return expanded_pos, expanded_int
