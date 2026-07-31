@@ -354,6 +354,21 @@ class Scene:
 
         config.targets = targets
 
+    def _has_explicit_mount_rate(self, **overrides: Any) -> bool:
+        """Whether a mount rate was commanded for this frame (override or config).
+
+        Distinct from `_resolve_mount_rate`, which always yields a rate (falling
+        back to a tracked object, then sidereal). "Commanded" is what makes the
+        star field follow the mount instead of `star_motion.translation`.
+        """
+        cfg = self.config
+        return bool(
+            "mount_ra_rate" in overrides
+            or "mount_dec_rate" in overrides
+            or cfg.mount_ra_rate
+            or cfg.mount_dec_rate
+        )
+
     def _resolve_mount_rate(self, **overrides: Any) -> tuple[float, float]:
         """Resolve inertial mount RA/Dec rate (rad/s) for the current frame.
 
@@ -361,13 +376,7 @@ class Scene:
         (already rad/s) > sidereal (0).
         """
         cfg = self.config
-        has_explicit = (
-            "mount_ra_rate" in overrides
-            or "mount_dec_rate" in overrides
-            or cfg.mount_ra_rate
-            or cfg.mount_dec_rate
-        )
-        if has_explicit:
+        if self._has_explicit_mount_rate(**overrides):
             mr = overrides.get("mount_ra_rate", cfg.mount_ra_rate)
             md = overrides.get("mount_dec_rate", cfg.mount_dec_rate)
             return math.radians(mr), math.radians(md)
@@ -376,18 +385,29 @@ class Scene:
             return primary.ra_rate, primary.dec_rate
         return 0.0, 0.0
 
-    def _discover_for_frame(
-        self, frame_start: float, **overrides: Any
-    ) -> tuple[list, list[float]]:
-        """Run catalog discovery for this frame.
+    def _mount_star_translation(self, **overrides: Any) -> list[float]:
+        """Star drift [row_rate, col_rate] in px/s induced by the mount.
 
-        Returns ``(streaks, star_translation_px)`` where ``star_translation_px``
-        is the per-frame star drift [row_rate, col_rate] induced by the mount
-        (stars stream opposite the mount; sidereal → [0, 0]).
+        Stars stream opposite the mount, so a rate track smears the field while a
+        sidereal track (rate 0) leaves it static. Independent of catalog
+        discovery: a scene with no satellite catalog still streaks its stars.
         """
+        from sdasim.orbits import angular_to_pixel_rates
+
+        sensor = self.sensor
+        mr_rad, md_rad = self._resolve_mount_rate(**overrides)
+        point_dec = overrides.get("point_dec", self.config.stars.dec)
+        row_rate, col_rate = angular_to_pixel_rates(
+            mr_rad, md_rad, point_dec,
+            sensor.y_fov, sensor.x_fov, sensor.height, sensor.width,
+        )
+        return [-row_rate, -col_rate]
+
+    def _discover_for_frame(self, frame_start: float, **overrides: Any) -> list:
+        """Run catalog discovery for this frame -> list of in-FOV streaks."""
         from datetime import datetime, timedelta, timezone
 
-        from sdasim.orbits import angular_to_pixel_rates, discover_streaks
+        from sdasim.orbits import discover_streaks
 
         cfg = self.config
         sensor = self.sensor
@@ -416,18 +436,11 @@ class Scene:
             d = float(d.detach().reshape(()).item()) if isinstance(d, Tensor) else float(d)
             pad += self.optics.blur_radius_px(d)
 
-        streaks = discover_streaks(
+        return discover_streaks(
             self._catalog, t_frame, cfg.site, sensor,
             point_ra, point_dec, mr_rad, md_rad,
             cat.albedo, pad,
         )
-
-        # Stars stream opposite the mount; sidereal (mount=0) → static.
-        row_rate, col_rate = angular_to_pixel_rates(
-            mr_rad, md_rad, point_dec,
-            sensor.y_fov, sensor.x_fov, sensor.height, sensor.width,
-        )
-        return streaks, [-row_rate, -col_rate]
 
     def render(self, frame_idx: int = 0, **overrides: Any) -> tuple[Tensor, dict]:
         """Render a single frame -> (digital_image, metadata_dict)."""
@@ -499,10 +512,18 @@ class Scene:
 
         center = (sensor.height / 2.0, sensor.width / 2.0)
 
+        # Star streaking follows the commanded mount rate whenever one is given
+        # (live telemetry or config) -- and, as before, for any catalog scene.
+        # Deliberately NOT triggered by a tracked object alone: orbital mode
+        # (`objects:` + `tracking:`) precomputes star_motion.translation at
+        # construction and keeps its own path below.
+        mount_translation = None
+        if self._has_explicit_mount_rate(**overrides) or self._catalog is not None:
+            mount_translation = self._mount_star_translation(**overrides)
+
         # --- Catalog discovery: append auto-found field satellites as line targets ---
-        cat_star_translation = None
         if self._catalog is not None:
-            streaks, cat_star_translation = self._discover_for_frame(frame_start, **overrides)
+            streaks = self._discover_for_frame(frame_start, **overrides)
             if streaks:
                 extra_pos = torch.tensor(
                     [[s.pixel_row, s.pixel_col] for s in streaks],
@@ -521,10 +542,10 @@ class Scene:
                 target_velocities = torch.cat([target_velocities, extra_vel], dim=0)
 
         # --- Mode dispatch ---
-        if self._catalog is not None:
-            # Catalog mode: mount rate drives star streaking; targets (configured +
+        if mount_translation is not None:
+            # Mount-rate mode: the mount drives star streaking; targets (configured +
             # discovered) already carry sensor-frame apparent velocities, used as-is.
-            star_vel = cat_star_translation
+            star_vel = mount_translation
             star_rot = 0.0
             moving = star_vel[0] != 0.0 or star_vel[1] != 0.0
             star_osf = sm.temporal_osf if moving else 1
