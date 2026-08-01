@@ -30,7 +30,7 @@ CENTER = (H / 2.0, W / 2.0)
 def make_model(obscuration=0.35, **aberrations) -> OpticsModel:
     cfg = OpticsConfig(
         enabled=True,
-        fnumber=FNUM,
+        f_number=FNUM,
         obscuration=obscuration,
         wavelength_nm=LAM_UM * 1e3,
         pixel_pitch_um=PITCH,
@@ -196,6 +196,30 @@ class TestAberrations:
         rel_diff = (img_in - img_out).abs().sum() / img_in.sum()
         assert rel_diff.item() > 0.05
 
+    def test_coma_radial_clean_center_tails_at_edges(self):
+        """Field-linear coma: on-axis stars stay clean, corner stars grow
+        radially-oriented comatic tails."""
+        model = make_model(obscuration=0.0, coma_radial=1.0)
+        img_center = render_star(model, 0.0, pos=[H / 2.0, W / 2.0])
+        img_edge = render_star(model, 0.0, pos=[H / 2.0, W - 30.0])  # +col edge
+        _, _, _, mrr_c, mcc_c = moments(img_center)
+        _, _, cc_col, mrr_e, mcc_e = moments(img_edge)
+        # center: tight, symmetric; edge: elongated along the field (col) axis
+        assert (mrr_c + mcc_c) < 0.5 * (mrr_e + mcc_e)
+        assert mcc_e > 1.5 * mrr_e  # tail along +col, not rows
+        # positive coma_radial -> flux centroid pushed OUTWARD (away from center)
+        assert cc_col > W - 30.0
+        # flux conserved for the edge star
+        assert img_edge.sum().item() == pytest.approx(1e6, rel=1e-3)
+
+    def test_coma_radial_is_radially_oriented(self):
+        """A star on the +row edge tails along rows, not columns."""
+        model = make_model(obscuration=0.0, coma_radial=1.0)
+        img = render_star(model, 0.0, pos=[H - 30.0, W / 2.0])
+        _, cr_row, _, mrr, mcc = moments(img)
+        assert mrr > 1.5 * mcc
+        assert cr_row > H - 30.0
+
     def test_field_curvature_blurs_corner(self):
         model = make_model(obscuration=0.0, field_curvature=1.5)
         img_center = render_star(model, 0.0, pos=[H / 2.0, W / 2.0])
@@ -225,7 +249,7 @@ class TestSceneIntegration:
         cfg.sensor.psf_sigma = SIGMA
         cfg.optics = OpticsConfig(
             enabled=enabled,
-            fnumber=FNUM,
+            f_number=FNUM,
             obscuration=0.35,
             pixel_pitch_um=PITCH,
             aberrations=AberrationsConfig(**aberrations),
@@ -273,7 +297,7 @@ class TestReviewRegressions:
             cfg.sensor.psf_sigma = SIGMA
             cfg.optics = OpticsConfig(
                 enabled=True,
-                fnumber=FNUM,
+                f_number=FNUM,
                 obscuration=0.35,
                 pixel_pitch_um=PITCH,
                 aberrations=AberrationsConfig(defocus=2.0),
@@ -321,7 +345,7 @@ class TestReviewRegressions:
         """f/2.25-style blowup: N x K must respect max_sub_sources (OOM guard)."""
         cfg = OpticsConfig(
             enabled=True,
-            fnumber=2.25,
+            f_number=2.25,
             obscuration=0.6,
             pixel_pitch_um=10.0,
             max_sub_sources=200_000,
@@ -348,7 +372,7 @@ class TestReviewRegressions:
         """max_render_seconds is converted via a measured splat rate."""
         def build(seconds):
             cfg = OpticsConfig(
-                enabled=True, fnumber=FNUM, obscuration=0.35, pixel_pitch_um=PITCH,
+                enabled=True, f_number=FNUM, obscuration=0.35, pixel_pitch_um=PITCH,
                 max_render_seconds=seconds, aberrations=AberrationsConfig(),
             )
             return OpticsModel(cfg, SIGMA, H, W)
@@ -368,7 +392,7 @@ class TestReviewRegressions:
 
     def test_explicit_count_skips_calibration(self):
         cfg = OpticsConfig(
-            enabled=True, fnumber=FNUM, obscuration=0.35, pixel_pitch_um=PITCH,
+            enabled=True, f_number=FNUM, obscuration=0.35, pixel_pitch_um=PITCH,
             max_sub_sources=123_456, aberrations=AberrationsConfig(),
         )
         model = OpticsModel(cfg, SIGMA, H, W)
@@ -402,7 +426,7 @@ class TestConfigLoading:
 sensor: {height: 64, width: 64}
 optics:
   enabled: true
-  fnumber: 10.0
+  f_number: 10.0
   obscuration: 0.3
   aberrations: {astig_0: 0.08, spherical: 0.1, field_curvature: 0.5}
 """
@@ -412,6 +436,6 @@ optics:
 
         cfg = load_config(path)
         assert cfg.optics.enabled is True
-        assert cfg.optics.fnumber == 10.0
+        assert cfg.optics.f_number == 10.0
         assert cfg.optics.aberrations.astig_0 == 0.08
         assert cfg.optics.aberrations.field_curvature == 0.5

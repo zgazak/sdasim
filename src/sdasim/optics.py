@@ -206,11 +206,11 @@ class OpticsModel:
     ):
         if not 0.0 <= cfg.obscuration < 1.0:
             raise ValueError(f"obscuration must be in [0, 1), got {cfg.obscuration}")
-        if cfg.fnumber <= 0 or cfg.pixel_pitch_um <= 0:
-            raise ValueError("fnumber and pixel_pitch_um must be positive")
+        if cfg.f_number <= 0 or cfg.pixel_pitch_um <= 0:
+            raise ValueError("f_number and pixel_pitch_um must be positive")
         self.cfg = cfg
         self.sigma = float(psf_sigma)
-        n = cfg.fnumber
+        n = cfg.f_number
         lam_um = cfg.wavelength_nm * 1e-3
         # Displacement scale: wavefront-error microns -> image-plane pixels.
         self._px_per_um = 2.0 * n / cfg.pixel_pitch_um
@@ -220,9 +220,10 @@ class OpticsModel:
         ab = cfg.aberrations
         self._c4_static_um = ab.defocus * lam_um
         self._fc_um = ab.field_curvature * lam_um
+        self._cr_um = ab.coma_radial * lam_um
         self._static_um = [getattr(ab, t) * lam_um for t in _STATIC_TERMS]
-        # Field radius normalization: field_curvature is the extra defocus at
-        # the field corner, growing quadratically from the boresight center.
+        # Field radius normalization: field_curvature/coma_radial are the values
+        # at the field corner, growing (quadratically / linearly) from boresight.
         self._corner_r2 = (height / 2.0) ** 2 + (width / 2.0) ** 2
 
         # Full rung ladder: every power of two up to the sampling ceiling. The
@@ -241,9 +242,12 @@ class OpticsModel:
             # quantization means small requests collapse onto the same actual
             # count (4/8/16/32 all yield the 2-ring minimum) — keep one of each.
             if not self._rungs or p.shape[0] > self._rungs[-1]["k"]:
-                self._rungs.append(
-                    {"k": p.shape[0], "w": w, "grad4": grad4.flip(1), "static": static.flip(1)}
-                )
+                rung = {"k": p.shape[0], "w": w, "grad4": grad4.flip(1), "static": static.flip(1)}
+                if self._cr_um != 0.0:
+                    # Field-linear coma needs the per-source coma bases too.
+                    rung["grad8"] = (_zernike_grad("coma_x", p) * self._px_per_um).flip(1)
+                    rung["grad7"] = (_zernike_grad("coma_y", p) * self._px_per_um).flip(1)
+                self._rungs.append(rung)
             if k >= 4096:
                 break
             k *= 2
@@ -328,6 +332,7 @@ class OpticsModel:
         r = abs(c4_um) * 4 * math.sqrt(3)
         for c_um, term in zip(self._static_um, _STATIC_TERMS):
             r += abs(c_um) * grad_max[term]
+        r += abs(self._cr_um) * 7 * math.sqrt(8)  # field-linear coma, worst at the corner
         return r * self._px_per_um
 
     def _k_needed(self, blur_px: float, sigma: float | None = None) -> int:
@@ -409,14 +414,25 @@ class OpticsModel:
         # Per-source defocus coefficient (microns): static + commanded (+ field
         # curvature, quadratic in boresight-relative field radius).
         c4_um = self._c4_static_um + defocus_um * self._c4_per_defocus_um
-        if self._fc_um != 0.0:
+        rel = None
+        if self._fc_um != 0.0 or self._cr_um != 0.0:
             rel = positions - positions.new_tensor(center)
+        if self._fc_um != 0.0:
             r2 = (rel * rel).sum(dim=1)
             c4_um = c4_um + self._fc_um * (r2 / self._corner_r2)
         c4_um = torch.as_tensor(c4_um, dtype=positions.dtype, device=positions.device)
         c4_um = c4_um.reshape(-1, 1, 1)  # (M or 1, 1, 1)
 
         offsets = rung["static"].unsqueeze(0) + c4_um * rung["grad4"].unsqueeze(0)
+        if self._cr_um != 0.0:
+            # Field-linear coma: the coma vector tracks the field vector, so the
+            # Z8 (x/col) component scales with the source's column offset and Z7
+            # (y/row) with its row offset, normalized to the corner radius.
+            # Positive coma_radial points tails away from boresight.
+            r_corner = math.sqrt(self._corner_r2)
+            c8 = (self._cr_um * rel[:, 1] / r_corner).reshape(-1, 1, 1)
+            c7 = (self._cr_um * rel[:, 0] / r_corner).reshape(-1, 1, 1)
+            offsets = offsets + c8 * rung["grad8"].unsqueeze(0) + c7 * rung["grad7"].unsqueeze(0)
         expanded_pos = (positions.unsqueeze(1) + offsets).reshape(-1, 2)
         expanded_int = (intensities.unsqueeze(1) * rung["w"].unsqueeze(0)).reshape(-1)
         return expanded_pos, expanded_int

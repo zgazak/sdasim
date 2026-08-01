@@ -161,6 +161,13 @@ class AberrationsConfig:
     # Extra defocus (waves RMS) at the field CORNER, growing quadratically with
     # boresight-relative field radius — field curvature / focal-plane bow.
     field_curvature: float = 0.0
+    # Field-linear coma: waves RMS at the field CORNER, oriented radially and
+    # growing linearly with field radius — the classic "comatic corners"
+    # pattern (clean core on-axis, outward-pointing tails at the edges).
+    # Positive values point the tails away from the boresight. Distinct from
+    # coma_x/coma_y, which are field-CONSTANT (decenter/tilt miscollimation:
+    # every star gets the same tail).
+    coma_radial: float = 0.0
 
 
 @dataclass
@@ -173,7 +180,7 @@ class OpticsConfig:
     """
 
     enabled: bool = False
-    fnumber: float = 8.0  # working f-number of the optical system
+    f_number: float = 8.0  # working f-number of the optical system
     obscuration: float = 0.0  # secondary diameter / aperture diameter (0 = clear)
     wavelength_nm: float = 550.0  # converts waves RMS <-> microns of wavefront
     pixel_pitch_um: float = 9.0  # detector pixel pitch, microns
