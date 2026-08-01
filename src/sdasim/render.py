@@ -274,13 +274,22 @@ def render_frame(
     star_signal = splat_gaussians(height, width, exp_pos, exp_int, psf_sigma)
 
     # --- Targets: per-target within-frame motion blur ---
-    # Use target_t_osf if provided, otherwise auto-compute from velocity.
+    # Use target_t_osf if provided (Scene resolves it against the noise floor
+    # and budget), otherwise fall back to the same spacing rule with a plain
+    # sigma-relative spacing. Speed is the max VECTOR-NORM velocity (the old
+    # per-axis abs().max() under-read diagonal streaks by up to sqrt(2)).
     tgt_osf = target_t_osf
     if tgt_osf is None and target_velocities is not None and target_positions.shape[0] > 0:
-        # Auto: ~1 sub-step per pixel of max target motion during exposure
-        max_speed = target_velocities.abs().max().item()
-        streak_px = max_speed * exposure
-        tgt_osf = max(1, int(streak_px * 2))  # 2 sub-steps per pixel for quality
+        max_speed = float(target_velocities.norm(dim=1).max().item())
+        sigma_val = (
+            float(psf_sigma.detach().reshape(()).max().item())
+            if isinstance(psf_sigma, Tensor)
+            else float(psf_sigma)
+        )
+        tgt_osf, _ = resolve_temporal_osf(
+            None, [max_speed, 0.0], 0.0, exposure,
+            max(1.5 * sigma_val, 1.0), 0.0, target_positions.shape[0], None,
+        )
 
     if (
         target_velocities is not None

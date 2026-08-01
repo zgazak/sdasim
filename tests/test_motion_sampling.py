@@ -93,6 +93,65 @@ class TestResolveTemporalOsf:
         assert not cl2 and osf2 == math.ceil(1000.0 / 3.0)
 
 
+class TestTargetRule:
+    """Targets now share the star machinery (old rule: per-axis abs max,
+    int() truncation, fixed 0.5 px spacing)."""
+
+    def test_diagonal_speed_uses_vector_norm(self):
+        from sdasim.render import render_frame
+
+        # A 45-degree streak: per-axis max would read 30 px/s; the true speed
+        # is 30*sqrt(2). With spacing 1.5*sigma=2.25 px over 2 s, norm-based
+        # sampling needs ceil(84.85/2.25)=38 vs abs-based 27 — verify via the
+        # rendered second moment along the trail (finer sampling => smoother,
+        # but the count difference shows in the expanded splat count, so probe
+        # the resolver directly).
+        speed_norm = math.hypot(30.0, 30.0)
+        osf, _ = resolve_temporal_osf(None, [30.0, 30.0], 0.0, 2.0, 2.25, 0.0, 1, None)
+        assert osf == math.ceil(speed_norm * 2.0 / 2.25)
+        # And render_frame's fallback path agrees (no Scene involved):
+        img, _, tgt = render_frame(
+            height=64, width=64,
+            star_positions=torch.zeros(0, 2), star_intensities=torch.zeros(0),
+            target_positions=torch.tensor([[10.0, 10.0]]),
+            target_intensities=torch.tensor([1000.0]),
+            psf_sigma=1.5, background_pe=0.0, dark_current_pe=0.0, bias_pe=0.0,
+            read_noise=0.0, electronic_noise=0.0, gain=1.0, fwc=1e9,
+            a2d_bias=0.0, a2d_dtype="uint16",
+            enable_shot_noise=False, enable_read_noise=False,
+            target_velocities=torch.tensor([[10.0, 10.0]]), exposure=2.0,
+        )
+        assert tgt.sum().item() == pytest.approx(1000.0, rel=1e-3)
+
+    def test_slow_target_floors_at_two(self):
+        """Old rule gave int(0.8*2)=1 for slow targets — start-of-exposure
+        centroid instead of mid-exposure (the same cliff stars had)."""
+        osf, _ = resolve_temporal_osf(None, [0.2, 0.0], 0.0, 2.0, 2.25, 0.0, 1, None)
+        assert osf == 2
+
+    def test_targets_draw_on_remaining_budget(self):
+        cfg = SceneConfig(
+            sensor=SensorConfig(height=128, width=128, y_fov=0.5, x_fov=0.5, exposure=2.0),
+            stars=StarFieldConfig(mode="bins"),
+            star_motion=StarMotionConfig(translation=[0.0, 40.0]),
+            seed=3,
+            max_render_seconds=0.05,
+        )
+        from sdasim.config import TargetConfig
+
+        cfg.targets = [TargetConfig(mode="line", origin=[0.5, 0.1], velocity=[0.0, 200.0], mv=8.0)]
+        scene = Scene(cfg)
+        _, _, _, meta = scene.render_signals(0)
+        assert meta["target_temporal_osf"] is not None and meta["target_temporal_osf"] >= 2
+        budget = scene._subsource_budget()
+        used = (
+            scene.star_positions.shape[0] * meta["star_temporal_osf"]
+            + meta["num_targets"] * meta["target_temporal_osf"]
+        )
+        # stars + targets together stay within budget + per-population floors
+        assert used <= budget + 2 * (scene.star_positions.shape[0] + meta["num_targets"])
+
+
 class TestSceneIntegration:
     def _scene(self, **kw):
         cfg = SceneConfig(

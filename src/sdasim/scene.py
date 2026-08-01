@@ -698,6 +698,29 @@ class Scene:
         if target_velocities.shape[0] == 0:
             target_velocities = None
 
+        # Resolve target motion sampling with the same noise-floor rule. Targets
+        # draw on whatever the star expansion left of the sub-source budget, so
+        # a LEO streaking through a crowded rate-track frame cannot double-spend.
+        target_osf = None
+        target_osf_clamped = False
+        if target_velocities is not None and target_positions.shape[0] > 0:
+            tmax = float(target_velocities.norm(dim=1).max().item())
+            budget = self._subsource_budget()
+            remaining = (
+                None if budget is None
+                else max(budget - star_positions.shape[0] * star_osf, 0)
+            )
+            t_peak, t_noise = self._streak_photometry(
+                target_intensities, [tmax, 0.0], 0.0, sensor.exposure, sigma_scalar, r_max
+            )
+            target_osf, target_osf_clamped = resolve_temporal_osf(
+                None, [tmax, 0.0], 0.0, sensor.exposure,
+                motion_sampling_spacing(
+                    sigma_scalar, t_peak, t_noise, self.config.sampling_quality
+                ),
+                0.0, target_positions.shape[0], remaining,
+            )
+
         defer_read_noise = overrides.get("defer_read_noise", False)
 
         use_empirical = sensor.psf_model == "empirical" or sensor.noise_model == "empirical"
@@ -781,6 +804,7 @@ class Scene:
                 star_rotation=star_rot,
                 target_velocities=target_velocities,
                 t_osf=star_osf,
+                target_t_osf=target_osf,
                 exposure=sensor.exposure,
                 optics=self.optics,
                 defocus_um=defocus_um,
@@ -807,6 +831,8 @@ class Scene:
             "star_temporal_osf": star_osf,  # resolved motion sub-sampling (auto unless pinned)
             "star_osf_clamped": star_osf_clamped,  # True when the budget capped it (beading risk)
             "sampling_spacing_px": spacing_px,  # noise-derived spacing (None = pinned osf)
+            "target_temporal_osf": target_osf,  # resolved target sub-sampling (None = no targets)
+            "target_osf_clamped": target_osf_clamped,
             "target_velocities": (
                 target_velocities.detach().cpu().tolist() if target_velocities is not None else []
             ),  # [[row_rate, col_rate], ...] px/sec
