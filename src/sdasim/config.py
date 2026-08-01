@@ -171,15 +171,19 @@ class OpticsConfig:
     obscuration: float = 0.0  # secondary diameter / aperture diameter (0 = clear)
     wavelength_nm: float = 550.0  # converts waves RMS <-> microns of wavefront
     pixel_pitch_um: float = 9.0  # detector pixel pitch, microns
-    max_defocus_um: float = 500.0  # largest commanded |defocus_um| expected; sizes
-    #                                 the pupil-sample ladder (larger commands still
-    #                                 render, at the top rung's sampling density)
-    # Hard cap on sources*pupil_samples per render (memory/time safety rail).
-    # Fast optics + large defocus + motion expansion multiply: N stars x t_osf
-    # x K can reach tens of millions of splats and tens of GB without a cap.
-    # When the cap bites, pupil sampling is coarsened (donuts get grainy, flux
-    # and moments stay exact) and metadata flags pupil_sampling_clamped.
-    max_sub_sources: int = 2_000_000
+    # --- cost ceiling for the defocus expansion --------------------------------
+    # Fast optics + large defocus + motion expansion multiply: N stars x t_osf x
+    # pupil samples can reach tens of millions of splats and tens of GB. Rather
+    # than ask for a sub-source count (which means nothing without knowing the
+    # machine), state how much render time defocus may add: sdasim measures this
+    # machine's splat throughput once at Scene construction and converts. When
+    # the ceiling binds, pupil sampling is coarsened (donuts get grainy; flux and
+    # moments stay exact) and metadata flags pupil_sampling_clamped.
+    max_render_seconds: float = 0.5
+    # Explicit sub-source cap. Overrides max_render_seconds when set — use it
+    # when a run must render identically across machines, since a calibrated
+    # budget is by definition machine-dependent.
+    max_sub_sources: int | None = None
     aberrations: AberrationsConfig = field(default_factory=AberrationsConfig)
 
 

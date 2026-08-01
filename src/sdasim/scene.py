@@ -730,6 +730,9 @@ class Scene:
             "pupil_sampling_clamped": (
                 self.optics.last_clamped if self.optics is not None else False
             ),
+            "pupil_sample_budget": (
+                self.optics.max_sub_sources if self.optics is not None else None
+            ),
             "zeropoint": sensor.zeropoint,
             "a2d_dtype": sensor.a2d_dtype,
             "psf_model": sensor.psf_model,

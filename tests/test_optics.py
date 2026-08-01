@@ -27,14 +27,14 @@ H = W = 256
 CENTER = (H / 2.0, W / 2.0)
 
 
-def make_model(obscuration=0.35, max_defocus_um=4000.0, **aberrations) -> OpticsModel:
+def make_model(obscuration=0.35, **aberrations) -> OpticsModel:
     cfg = OpticsConfig(
         enabled=True,
         fnumber=FNUM,
         obscuration=obscuration,
         wavelength_nm=LAM_UM * 1e3,
         pixel_pitch_um=PITCH,
-        max_defocus_um=max_defocus_um,
+        max_sub_sources=10_000_000,
         aberrations=AberrationsConfig(**aberrations),
     )
     return OpticsModel(cfg, SIGMA, H, W)
@@ -228,7 +228,6 @@ class TestSceneIntegration:
             fnumber=FNUM,
             obscuration=0.35,
             pixel_pitch_um=PITCH,
-            max_defocus_um=2000.0,
             aberrations=AberrationsConfig(**aberrations),
         )
         return cfg
@@ -277,7 +276,6 @@ class TestReviewRegressions:
                 fnumber=FNUM,
                 obscuration=0.35,
                 pixel_pitch_um=PITCH,
-                max_defocus_um=2000.0,
                 aberrations=AberrationsConfig(defocus=2.0),
             )
             return Scene(cfg)
@@ -326,7 +324,6 @@ class TestReviewRegressions:
             fnumber=2.25,
             obscuration=0.6,
             pixel_pitch_um=10.0,
-            max_defocus_um=10000.0,
             max_sub_sources=200_000,
             aberrations=AberrationsConfig(),
         )
@@ -336,13 +333,57 @@ class TestReviewRegressions:
         ints = torch.rand(m)
         with pytest.warns(UserWarning, match="max_sub_sources"):
             epos, eint = model.expand(pos, ints, 5000.0, CENTER)
-        assert epos.shape[0] <= cfg.max_sub_sources
+        # The coarsest sample set may overshoot a *time* budget slightly rather
+        # than drop the defocus entirely, but the overshoot is bounded.
+        assert epos.shape[0] <= OpticsModel.SKIP_OVERSHOOT * cfg.max_sub_sources
+        assert model.last_k <= model._rungs[0]["k"]
         assert model.last_clamped
         assert torch.allclose(eint.sum(), ints.sum(), rtol=1e-4)  # flux still exact
         # Small frames at the same defocus are NOT clamped
         few = model.expand(pos[:10], ints[:10], 5000.0, CENTER)[0]
         assert not model.last_clamped
         assert few.shape[0] > 10 * 256
+
+    def test_time_budget_calibrates_to_a_sub_source_cap(self):
+        """max_render_seconds is converted via a measured splat rate."""
+        def build(seconds):
+            cfg = OpticsConfig(
+                enabled=True, fnumber=FNUM, obscuration=0.35, pixel_pitch_um=PITCH,
+                max_render_seconds=seconds, aberrations=AberrationsConfig(),
+            )
+            return OpticsModel(cfg, SIGMA, H, W)
+
+        slim, generous = build(0.05), build(2.0)
+        assert slim.splat_rate is not None and slim.splat_rate > 0
+        assert slim.max_sub_sources > 0
+        # A 40x larger budget must buy materially more sub-sources (allowing
+        # generous slack for timing noise on a loaded machine).
+        assert generous.max_sub_sources > 4 * slim.max_sub_sources
+        # ... and the tighter budget clamps where the generous one does not.
+        pos, ints = torch.rand(400, 2) * 200, torch.ones(400)
+        with pytest.warns(UserWarning, match="max_render_seconds"):
+            slim.expand(pos, ints, 4000.0, CENTER)
+        assert slim.last_clamped
+        assert slim.last_k <= generous.last_k or not generous.last_clamped
+
+    def test_explicit_count_skips_calibration(self):
+        cfg = OpticsConfig(
+            enabled=True, fnumber=FNUM, obscuration=0.35, pixel_pitch_um=PITCH,
+            max_sub_sources=123_456, aberrations=AberrationsConfig(),
+        )
+        model = OpticsModel(cfg, SIGMA, H, W)
+        assert model.splat_rate is None  # no benchmark run
+        assert model.max_sub_sources == 123_456
+
+    def test_ladder_covers_full_range_regardless_of_config(self):
+        """No max_defocus_um: the ladder always reaches the sampling ceiling.
+
+        Actual counts land within a few of each power of two (ring rounding),
+        and duplicate rungs are collapsed.
+        """
+        ks = [r["k"] for r in make_model()._rungs]
+        assert ks[-1] > 4000
+        assert ks == sorted(set(ks))  # strictly increasing, no duplicates
 
     def test_empty_frame_reports_frame_level_k(self):
         """m==0 must not leave stale (or misleadingly reset) sampling metadata."""

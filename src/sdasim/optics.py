@@ -46,6 +46,7 @@ Diffraction detail (Fresnel rings, Arago spot) is not modeled.
 from __future__ import annotations
 
 import math
+import time
 import warnings
 
 import torch
@@ -129,20 +130,69 @@ def _zernike_grad(term: str, p: Tensor) -> Tensor:
     raise ValueError(f"unknown Zernike term: {term}")
 
 
+def _round_sig(x: float, digits: int) -> int:
+    """Round to `digits` significant figures — keeps a timed budget from
+    jittering the chosen sampling between otherwise identical runs."""
+    if x <= 0:
+        return 1
+    mag = 10 ** (math.floor(math.log10(x)) - digits + 1)
+    return max(1, int(round(x / mag) * mag))
+
+
+def _sync(device) -> None:
+    """Block until queued device work finishes, so timings are real."""
+    if device is not None and getattr(device, "type", None) == "mps":
+        torch.mps.synchronize()
+    elif device is not None and getattr(device, "type", None) == "cuda":
+        torch.cuda.synchronize()
+
+
+def _measure_splat_rate(height: int, width: int, sigma: float, device, n: int = 20_000) -> float:
+    """Sub-sources splatted per second for this scene on this machine.
+
+    Splat cost is very nearly linear in sub-source count above a small fixed
+    overhead, and the constant depends on the footprint (psf_sigma), the image
+    size (scatter locality) and the device — all of which this measures
+    directly rather than guessing. Costs ~10-40 ms, once, at Scene setup.
+    """
+    from sdasim.splat import splat_gaussians
+
+    radius = max(1, math.ceil(3.0 * sigma))
+    scale = torch.tensor([float(height), float(width)], device=device)
+    pos = torch.rand(n, 2, device=device) * scale
+    ints = torch.ones(n, device=device)
+    # Warm up first: lazy device init and kernel compilation would otherwise be
+    # charged to the measurement.
+    splat_gaussians(height, width, pos[:512], ints[:512], sigma, radius)
+    _sync(device)
+    t0 = time.perf_counter()
+    splat_gaussians(height, width, pos, ints, sigma, radius)
+    _sync(device)
+    return n / max(time.perf_counter() - t0, 1e-6)
+
+
 class OpticsModel:
     """Precomputed pupil geometry for ``expand()`` (built once per Scene).
 
-    Precomputes a small ladder of pupil sample sets (K = 4, 8, 16, ... up to
-    what ``max_defocus_um`` needs) and, per rung, the image-plane offsets of
-    the static non-defocus aberrations plus the defocus gradient direction.
-    ``expand()`` then only scales/adds precomputed tensors, picks the smallest
-    rung that keeps sub-source spacing below ~2*psf_sigma (no ring artifacts),
-    and skips entirely when the total blur is negligible — so an in-focus,
-    aberration-free frame costs nothing.
+    Precomputes the full ladder of pupil sample sets (K = 4, 8, 16, ... 4096;
+    ~163 KB in total, so there is nothing to gain by sizing it smaller) and,
+    per rung, the image-plane offsets of the static non-defocus aberrations
+    plus the defocus gradient direction. ``expand()`` then only scales/adds
+    precomputed tensors, picks the smallest rung that keeps sub-source spacing
+    below ~2*psf_sigma (no ring artifacts), and skips entirely when the total
+    blur is negligible — so an in-focus, aberration-free frame costs nothing.
+
+    The cost ceiling is expressed in seconds (``max_render_seconds``): this
+    machine's splat throughput is measured once here and converted into a
+    sub-source cap, so the same config behaves sanely on a laptop and a GPU
+    box. Set ``max_sub_sources`` explicitly to pin the cap instead.
     """
 
     # Passthrough when total blur radius is below this many psf_sigma.
     SKIP_BLUR_SIGMA = 0.3
+    # How far the coarsest sample set may overshoot the budget before the
+    # defocus is dropped entirely rather than rendered over-budget.
+    SKIP_OVERSHOOT = 8
 
     def __init__(
         self,
@@ -173,13 +223,9 @@ class OpticsModel:
         # the field corner, growing quadratically from the boresight center.
         self._corner_r2 = (height / 2.0) ** 2 + (width / 2.0) ** 2
 
-        # Rung ladder sized for the worst configured blur.
-        r_max = self._blur_radius_px(
-            abs(self._c4_static_um)
-            + abs(self._fc_um)
-            + cfg.max_defocus_um * self._c4_per_defocus_um
-        )
-        k_top = self._k_needed(r_max)
+        # Full rung ladder: every power of two up to the sampling ceiling. The
+        # whole ladder is ~163 KB, so there is no reason to size it from the
+        # expected defocus and risk silently under-sampling a larger command.
         self._rungs: list[dict] = []
         k = 4
         while True:
@@ -189,13 +235,25 @@ class OpticsModel:
             for c_um, term in zip(self._static_um, _STATIC_TERMS):
                 if c_um != 0.0:
                     static = static + c_um * _zernike_grad(term, p) * self._px_per_um
-            # (px, py) gradient components -> (row, col) image offsets.
-            self._rungs.append(
-                {"k": p.shape[0], "w": w, "grad4": grad4.flip(1), "static": static.flip(1)}
-            )
-            if k >= k_top or k >= 4096:
+            # (px, py) gradient components -> (row, col) image offsets. Ring
+            # quantization means small requests collapse onto the same actual
+            # count (4/8/16/32 all yield the 2-ring minimum) — keep one of each.
+            if not self._rungs or p.shape[0] > self._rungs[-1]["k"]:
+                self._rungs.append(
+                    {"k": p.shape[0], "w": w, "grad4": grad4.flip(1), "static": static.flip(1)}
+                )
+            if k >= 4096:
                 break
             k *= 2
+
+        # Cost ceiling: an explicit count wins; otherwise calibrate this machine.
+        if cfg.max_sub_sources is not None:
+            self.max_sub_sources = int(cfg.max_sub_sources)
+            self.splat_rate = None
+        else:
+            self.splat_rate = _measure_splat_rate(height, width, self.sigma, device)
+            self.max_sub_sources = _round_sig(cfg.max_render_seconds * self.splat_rate, 2)
+
         # Set by each expand() call; read by Scene for render metadata.
         self.last_k: int = 1
         self.last_blur_px: float = 0.0
@@ -216,14 +274,20 @@ class OpticsModel:
         # already handed back its top rung.
         if not skipped and self.last_k == self._rungs[-1]["k"]:
             cause = (
-                f"the sample ladder tops out at {self._rungs[-1]['k']} because "
-                f"optics.max_defocus_um={self.cfg.max_defocus_um:.0f} sized it for less "
-                f"blur than this — raise max_defocus_um to cover the defocus you command"
+                f"pupil sampling is capped at {self._rungs[-1]['k']} samples — this blur is "
+                f"past what the model resolves; reduce the commanded defocus"
+            )
+        elif self.splat_rate is None:
+            cause = (
+                f"optics.max_sub_sources={self.max_sub_sources} caps sources x samples "
+                f"— raise it or reduce defocus/star count"
             )
         else:
             cause = (
-                f"optics.max_sub_sources={self.cfg.max_sub_sources} caps sources x samples "
-                f"— raise it (memory scales with the product) or reduce defocus/star count"
+                f"optics.max_render_seconds={self.cfg.max_render_seconds:g} allows "
+                f"{self.max_sub_sources:,} sub-sources at this machine's measured "
+                f"{self.splat_rate / 1e6:.1f}M/s — raise the budget or reduce "
+                f"defocus/star count"
             )
         warnings.warn(
             f"defocus blur of {blur_px:.0f} px across {m} sources wants {k_needed} "
@@ -308,16 +372,21 @@ class OpticsModel:
         # large defocus + motion expansion multiply into tens of millions of
         # splats otherwise. When the cap bites we coarsen the pupil sampling
         # (grainy donuts; flux/moments stay exact) rather than blow up.
-        k_budget = max(1, self.cfg.max_sub_sources // max(m, 1))
+        k_budget = max(1, self.max_sub_sources // max(m, 1))
         allowed = [r for r in self._rungs if r["k"] <= k_budget]
         if not allowed:
-            # Even the coarsest pupil sampling would blow the budget: skip the
-            # expansion outright (sources render with the in-focus PSF) instead
-            # of exceeding the cap. Explicit and warned — never an OOM.
-            self.last_k = 1
-            self.last_clamped = True
-            self._warn_clamp(m, k_needed, blur_px, skipped=True)
-            return positions, intensities
+            # The coarsest sample set alone exceeds the budget. Overshooting a
+            # *time* target slightly is far better than silently dropping the
+            # defocus (peak memory is bounded by the chunked splat either way),
+            # so only bail out when the overshoot is gross.
+            coarsest = self._rungs[0]
+            if coarsest["k"] <= self.SKIP_OVERSHOOT * k_budget:
+                allowed = [coarsest]
+            else:
+                self.last_k = 1
+                self.last_clamped = True
+                self._warn_clamp(m, k_needed, blur_px, skipped=True)
+                return positions, intensities
         rung = next((r for r in allowed if r["k"] >= k_needed), allowed[-1])
         self.last_k = rung["k"]
         self.last_clamped = rung["k"] < k_needed
