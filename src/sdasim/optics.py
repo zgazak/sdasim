@@ -211,12 +211,24 @@ class OpticsModel:
             if skipped
             else f"rendering coarser (grainy donut, {self.last_k} samples)"
         )
+        # Two different constraints can bite; naming the wrong one sends the
+        # reader to the wrong knob. The ladder is the binding one only when we
+        # already handed back its top rung.
+        if not skipped and self.last_k == self._rungs[-1]["k"]:
+            cause = (
+                f"the sample ladder tops out at {self._rungs[-1]['k']} because "
+                f"optics.max_defocus_um={self.cfg.max_defocus_um:.0f} sized it for less "
+                f"blur than this — raise max_defocus_um to cover the defocus you command"
+            )
+        else:
+            cause = (
+                f"optics.max_sub_sources={self.cfg.max_sub_sources} caps sources x samples "
+                f"— raise it (memory scales with the product) or reduce defocus/star count"
+            )
         warnings.warn(
             f"defocus blur of {blur_px:.0f} px across {m} sources wants {k_needed} "
-            f"pupil samples but optics.max_sub_sources={self.cfg.max_sub_sources} "
-            f"does not allow it — {what} rather than allocating unbounded "
-            f"memory/time. Raise max_sub_sources or reduce defocus/star count if "
-            f"fidelity matters at this blur.",
+            f"pupil samples; {cause}. {what.capitalize()} rather than allocating "
+            f"unbounded memory/time.",
             stacklevel=3,
         )
 
