@@ -26,7 +26,7 @@ from torch import Tensor
 
 from sdasim.fpa import MAX_PIXEL_VALUE
 from sdasim.noise import poisson_noise
-from sdasim.render import expand_motion
+from sdasim.render import expand_motion, motion_sampling_spacing, resolve_temporal_osf
 from sdasim.scene import Scene
 from sdasim.splat import splat_gaussians_batched
 from sdasim.targets import compute_target_positions
@@ -55,7 +55,23 @@ def _ensure_source_cache(scene: Scene) -> dict:
     sp = scene.star_positions
     si = scene.star_intensities
     has_motion = sm.rotation != 0.0 or sm.translation[0] != 0.0 or sm.translation[1] != 0.0
-    if has_motion and sm.temporal_osf > 1 and sp.shape[0] > 0:
+    # Same auto-resolution as Scene.render_signals: config int pins, None derives
+    # the sub-sampling from the streak vs this scene's noise floor and budget.
+    sigma = float(sensor.psf_sigma)
+    r_max = 0.5 * math.hypot(sensor.height, sensor.width)
+    star_osf = sm.temporal_osf
+    if star_osf is None:
+        peak_pe, noise_pe = scene._streak_photometry(
+            si, sm.translation, sm.rotation, sensor.exposure, sigma, r_max
+        )
+        spacing = motion_sampling_spacing(
+            sigma, peak_pe, noise_pe, scene.config.sampling_quality
+        )
+        star_osf, _ = resolve_temporal_osf(
+            None, sm.translation, sm.rotation, sensor.exposure, spacing, r_max,
+            sp.shape[0], scene._subsource_budget(),
+        )
+    if has_motion and star_osf > 1 and sp.shape[0] > 0:
         star_pos, star_int = expand_motion(
             sp,
             si,
@@ -63,7 +79,7 @@ def _ensure_source_cache(scene: Scene) -> dict:
             sm.rotation,
             0.0,
             sensor.exposure,
-            sm.temporal_osf,
+            star_osf,
             center,
         )
     else:

@@ -25,7 +25,7 @@ from sdasim.empirical import (
 )
 from sdasim.fpa import mv_to_pe
 from sdasim.optics import OpticsModel
-from sdasim.render import render_frame
+from sdasim.render import motion_sampling_spacing, render_frame, resolve_temporal_osf
 from sdasim.stars import generate_random_stars
 from sdasim.targets import compute_target_positions
 
@@ -136,6 +136,10 @@ class Scene:
         # Bias
         self.bias_pe = self.sensor.bias
 
+        # Wall-clock sub-source budget: splat throughput is measured lazily by
+        # _subsource_budget() and shared by motion sampling and the optics model.
+        self._splat_rate: float | None = None
+
         # Geometric defocus/aberration model (opt-in): precompute the pupil
         # sample ladder once; per-frame commanded defocus is a render override.
         self.optics = None
@@ -146,12 +150,29 @@ class Scene:
                     "the empirical render path convolves a fixed data-driven kernel and "
                     "cannot be defocused geometrically"
                 )
+            optics_budget = None
+            if config.optics.max_sub_sources is None:
+                seconds = (
+                    config.optics.max_render_seconds
+                    if config.optics.max_render_seconds is not None
+                    else config.max_render_seconds
+                )
+                if seconds is not None and seconds > 0:
+                    from sdasim.optics import _measure_splat_rate, _round_sig
+
+                    self._splat_rate = _measure_splat_rate(
+                        self.sensor.height, self.sensor.width,
+                        self.sensor.psf_sigma, self.device,
+                    )
+                    optics_budget = _round_sig(seconds * self._splat_rate, 2)
             self.optics = OpticsModel(
                 config.optics,
                 self.sensor.psf_sigma,
                 self.sensor.height,
                 self.sensor.width,
                 device=self.device,
+                budget_sub_sources=optics_budget,
+                splat_rate=self._splat_rate,
             )
 
         # Empirical (opt-in) bases — loaded once; default path leaves these None
@@ -354,6 +375,58 @@ class Scene:
 
         config.targets = targets
 
+    def _streak_photometry(
+        self,
+        star_intensities: Tensor,
+        star_vel,
+        star_rot: float,
+        exposure: float,
+        sigma: float,
+        r_max: float,
+    ) -> tuple[float, float]:
+        """(peak_pe, noise_pe): brightest streak's surface brightness vs the
+        per-pixel noise it rides on — the two numbers that decide how much
+        sampling ripple this frame can hide.
+
+        Peak surface brightness spreads the brightest star's flux along its
+        trail (point-source limit when the trail is shorter than the PSF).
+        The noise floor combines shot noise of source+sky+dark, read/electronic
+        noise, and A/D quantization (gain/sqrt(12)) — honoring the enable
+        flags, so a noise-free training render still gets a nonzero floor from
+        quantization rather than demanding infinite sampling quality.
+        """
+        i_max = float(star_intensities.max().item()) if star_intensities.numel() else 0.0
+        v0, v1 = (float(star_vel[0]), float(star_vel[1])) if star_vel is not None else (0.0, 0.0)
+        streak = (math.hypot(v0, v1) + abs(star_rot) * r_max) * exposure
+        width = math.sqrt(2.0 * math.pi) * sigma
+        peak = i_max / (width * max(streak, width))
+        var = self.sensor.gain**2 / 12.0
+        if self.config.enable_shot_noise:
+            var += peak + self.background_pe + self.dark_current_pe
+        if self.config.enable_read_noise:
+            var += self.sensor.read_noise**2 + self.sensor.electronic_noise**2
+        return peak, math.sqrt(var)
+
+    def _subsource_budget(self) -> int | None:
+        """Frame-wide sub-source cap from the wall-clock budget (lazy, cached).
+
+        Splat throughput is measured once on this machine/scene geometry; the
+        scene-level max_render_seconds converts to a count. <= 0 disables the
+        cap. The optics model draws from the same pool: motion expansion runs
+        first, and the defocus stage divides its budget by the already-expanded
+        source count, so motion sampling is served before donut smoothness.
+        """
+        seconds = self.config.max_render_seconds
+        if seconds is None or seconds <= 0:
+            return None
+        from sdasim.optics import _measure_splat_rate, _round_sig
+
+        if self._splat_rate is None:
+            self._splat_rate = _measure_splat_rate(
+                self.sensor.height, self.sensor.width, self.sensor.psf_sigma, self.device
+            )
+        return _round_sig(seconds * self._splat_rate, 2)
+
     def _has_explicit_mount_rate(self, **overrides: Any) -> bool:
         """Whether a mount rate was commanded for this frame (override or config).
 
@@ -547,8 +620,7 @@ class Scene:
             # discovered) already carry sensor-frame apparent velocities, used as-is.
             star_vel = mount_translation
             star_rot = 0.0
-            moving = star_vel[0] != 0.0 or star_vel[1] != 0.0
-            star_osf = sm.temporal_osf if moving else 1
+            star_osf = sm.temporal_osf
             star_positions = _apply_star_offset(
                 star_positions, star_vel, 0.0, frame_start, center,
             )
@@ -596,6 +668,30 @@ class Scene:
                 sm.rotation,
                 frame_start,
                 center,
+            )
+
+        # Resolve star motion sampling. An int (from config or the pinned
+        # branches above) wins verbatim; None means auto — sample the streak
+        # finely enough that beading stays below this frame's own noise floor,
+        # capped by the wall-clock sub-source budget.
+        sigma_scalar = (
+            float(psf_sigma.detach().reshape(()).item())
+            if isinstance(psf_sigma, Tensor)
+            else float(psf_sigma)
+        )
+        r_max = 0.5 * math.hypot(sensor.height, sensor.width)
+        spacing_px = None
+        star_osf_clamped = False
+        if star_osf is None:
+            peak_pe, noise_pe = self._streak_photometry(
+                star_intensities, star_vel, star_rot, sensor.exposure, sigma_scalar, r_max
+            )
+            spacing_px = motion_sampling_spacing(
+                sigma_scalar, peak_pe, noise_pe, self.config.sampling_quality
+            )
+            star_osf, star_osf_clamped = resolve_temporal_osf(
+                None, star_vel, star_rot, sensor.exposure, spacing_px, r_max,
+                star_positions.shape[0], self._subsource_budget(),
             )
 
         # Target velocities: pass None if no targets
@@ -708,6 +804,9 @@ class Scene:
             "target_intensities": target_intensities.detach().cpu().tolist(),
             "star_velocity": list(star_vel),  # [row_rate, col_rate] px/sec
             "star_rotation": star_rot,  # rad/sec
+            "star_temporal_osf": star_osf,  # resolved motion sub-sampling (auto unless pinned)
+            "star_osf_clamped": star_osf_clamped,  # True when the budget capped it (beading risk)
+            "sampling_spacing_px": spacing_px,  # noise-derived spacing (None = pinned osf)
             "target_velocities": (
                 target_velocities.detach().cpu().tolist() if target_velocities is not None else []
             ),  # [[row_rate, col_rate], ...] px/sec

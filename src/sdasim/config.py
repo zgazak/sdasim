@@ -90,7 +90,13 @@ class StarFieldConfig:
 class StarMotionConfig:
     rotation: float = 0.0
     translation: list[float] = field(default_factory=lambda: [0.0, 0.0])
-    temporal_osf: int = 100
+    # Motion-blur sub-sampling for STARS: how many stationary sub-sources a
+    # moving star becomes. None (default) = auto — sdasim derives it per frame
+    # from the streak length so sub-source spacing keeps sampling artifacts
+    # below the frame's own noise floor (see render.motion_sampling_spacing).
+    # An explicit int pins the value verbatim (byte-reproducible renders,
+    # sigma-differentiable training).
+    temporal_osf: int | None = None
 
 
 @dataclass
@@ -172,14 +178,12 @@ class OpticsConfig:
     wavelength_nm: float = 550.0  # converts waves RMS <-> microns of wavefront
     pixel_pitch_um: float = 9.0  # detector pixel pitch, microns
     # --- cost ceiling for the defocus expansion --------------------------------
-    # Fast optics + large defocus + motion expansion multiply: N stars x t_osf x
-    # pupil samples can reach tens of millions of splats and tens of GB. Rather
-    # than ask for a sub-source count (which means nothing without knowing the
-    # machine), state how much render time defocus may add: sdasim measures this
-    # machine's splat throughput once at Scene construction and converts. When
-    # the ceiling binds, pupil sampling is coarsened (donuts get grainy; flux and
-    # moments stay exact) and metadata flags pupil_sampling_clamped.
-    max_render_seconds: float = 0.5
+    # None (default) inherits the scene-level max_render_seconds; set here only
+    # to give the optics stage its own ceiling. The budget is converted to a
+    # sub-source cap via a measured splat rate; when it binds, pupil sampling is
+    # coarsened (donuts get grainy; flux and moments stay exact) and metadata
+    # flags pupil_sampling_clamped.
+    max_render_seconds: float | None = None
     # Explicit sub-source cap. Overrides max_render_seconds when set — use it
     # when a run must render identically across machines, since a calibrated
     # budget is by definition machine-dependent.
@@ -197,6 +201,17 @@ class SceneConfig:
     device: str = "auto"
     enable_shot_noise: bool = True
     enable_read_noise: bool = True
+    # Wall-clock ceiling for sub-source work (motion expansion + defocus pupil
+    # expansion combined). Converted to a sub-source cap via a splat-throughput
+    # measurement on this machine at Scene construction. Motion sampling is
+    # served first (beading is more visible than donut graininess); the defocus
+    # model gets the remainder. Degradations are flagged in render metadata.
+    max_render_seconds: float = 0.5
+    # Sub-source spacing pin, in units of psf_sigma. None (default) = auto:
+    # derived per frame from the brightest source vs the frame's noise floor so
+    # sampling ripple stays statistically invisible. Set a float (e.g. 1.5) to
+    # pin the spacing for reproducibility across scenes/frames.
+    sampling_quality: float | None = None
     mode: str | None = None
     sidereal_start: int | None = None
     obs_time: str | None = None  # ISO start time, e.g. "2024-01-01T00:00:00"

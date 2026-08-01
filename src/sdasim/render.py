@@ -20,6 +20,71 @@ if TYPE_CHECKING:
     from sdasim.optics import OpticsModel
 
 
+def motion_sampling_spacing(
+    sigma: float,
+    peak_pe: float,
+    noise_pe: float,
+    quality: float | None = None,
+) -> float:
+    """Largest sub-source spacing (px) whose sampling ripple hides in the noise.
+
+    A chain of Gaussians (sigma s) spaced d apart carries a periodic brightness
+    ripple of semi-amplitude a = 2*exp(-2*pi^2*s^2/d^2) (exact, by Poisson
+    summation). Rather than fix d/s at a universal constant, derive the ripple
+    each frame can actually afford: on the brightest streak, surface brightness
+    peak_pe rides on per-pixel noise noise_pe, so ripple below ~half the noise
+    is statistically invisible. Inverting the ripple law for that amplitude
+    gives the spacing. Bright star on dark sky -> tighter sampling; faint
+    streaks on bright sky -> coarser, for free.
+
+    quality pins d = quality*sigma instead (reproducibility across scenes).
+    The result is clamped to [1.3, 2.2]*sigma — the exponential makes margin
+    cheap below and unacceptable above — and floored at 1 px, below which the
+    pixel lattice itself dominates and finer sampling buys nothing.
+    """
+    if quality is None:
+        a = min(0.5 * noise_pe / max(peak_pe, 1e-9), 0.1)
+        q = math.pi * math.sqrt(2.0 / math.log(2.0 / a))
+        quality = min(max(q, 1.3), 2.2)
+    return max(quality * sigma, 1.0)
+
+
+def resolve_temporal_osf(
+    configured: int | None,
+    velocity,
+    rotation: float,
+    exposure: float,
+    spacing_px: float,
+    r_max_px: float,
+    n_sources: int,
+    budget_sub_sources: int | None,
+) -> tuple[int, bool]:
+    """Resolve the star motion-blur sub-sampling for this frame.
+
+    Returns (t_osf, clamped). An explicitly configured int wins verbatim.
+    Auto: enough sub-sources that spacing along the longest streak stays at
+    spacing_px. The streak bound folds in rotation via the farthest source
+    (r_max_px from the rotation center): |v| + |omega|*r_max. Floored at 2
+    whenever there is any motion — expand_motion places sub-sources at
+    sub-interval midpoints, so t_osf=1 would shift a moving star's centroid
+    from mid-exposure to exposure start (a half-streak astrometric jump).
+    Capped by the sub-source budget (beading is preferred to an unbounded
+    LEO-rate allocation), with clamped=True when the cap bites.
+    """
+    if configured is not None:
+        return max(1, int(configured)), False
+    v0, v1 = (float(velocity[0]), float(velocity[1])) if velocity is not None else (0.0, 0.0)
+    speed = math.hypot(v0, v1) + abs(rotation) * r_max_px
+    streak_px = speed * exposure
+    if streak_px <= 1e-9:
+        return 1, False
+    want = max(2, math.ceil(streak_px / spacing_px))
+    if budget_sub_sources is None or n_sources <= 0:
+        return want, False
+    cap = max(2, budget_sub_sources // n_sources)
+    return min(want, cap), want > cap
+
+
 def expand_motion(
     positions: Tensor,
     intensities: Tensor,

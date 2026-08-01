@@ -201,6 +201,8 @@ class OpticsModel:
         height: int,
         width: int,
         device=None,
+        budget_sub_sources: int | None = None,
+        splat_rate: float | None = None,
     ):
         if not 0.0 <= cfg.obscuration < 1.0:
             raise ValueError(f"obscuration must be in [0, 1), got {cfg.obscuration}")
@@ -246,13 +248,21 @@ class OpticsModel:
                 break
             k *= 2
 
-        # Cost ceiling: an explicit count wins; otherwise calibrate this machine.
+        # Cost ceiling: an explicit count wins; then a caller-shared budget
+        # (Scene measures splat throughput once for motion AND defocus);
+        # otherwise calibrate this machine ourselves (standalone use).
+        self._budget_seconds = (
+            cfg.max_render_seconds if cfg.max_render_seconds is not None else 0.5
+        )
         if cfg.max_sub_sources is not None:
             self.max_sub_sources = int(cfg.max_sub_sources)
             self.splat_rate = None
+        elif budget_sub_sources is not None:
+            self.max_sub_sources = int(budget_sub_sources)
+            self.splat_rate = splat_rate
         else:
             self.splat_rate = _measure_splat_rate(height, width, self.sigma, device)
-            self.max_sub_sources = _round_sig(cfg.max_render_seconds * self.splat_rate, 2)
+            self.max_sub_sources = _round_sig(self._budget_seconds * self.splat_rate, 2)
 
         # Set by each expand() call; read by Scene for render metadata.
         self.last_k: int = 1
@@ -284,7 +294,7 @@ class OpticsModel:
             )
         else:
             cause = (
-                f"optics.max_render_seconds={self.cfg.max_render_seconds:g} allows "
+                f"max_render_seconds={self._budget_seconds:g} allows "
                 f"{self.max_sub_sources:,} sub-sources at this machine's measured "
                 f"{self.splat_rate / 1e6:.1f}M/s — raise the budget or reduce "
                 f"defocus/star count"
