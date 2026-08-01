@@ -174,6 +174,12 @@ class OpticsConfig:
     max_defocus_um: float = 500.0  # largest commanded |defocus_um| expected; sizes
     #                                 the pupil-sample ladder (larger commands still
     #                                 render, at the top rung's sampling density)
+    # Hard cap on sources*pupil_samples per render (memory/time safety rail).
+    # Fast optics + large defocus + motion expansion multiply: N stars x t_osf
+    # x K can reach tens of millions of splats and tens of GB without a cap.
+    # When the cap bites, pupil sampling is coarsened (donuts get grainy, flux
+    # and moments stay exact) and metadata flags pupil_sampling_clamped.
+    max_sub_sources: int = 2_000_000
     aberrations: AberrationsConfig = field(default_factory=AberrationsConfig)
 
 

@@ -46,6 +46,7 @@ Diffraction detail (Fresnel rings, Arago spot) is not modeled.
 from __future__ import annotations
 
 import math
+import warnings
 
 import torch
 from torch import Tensor
@@ -198,6 +199,26 @@ class OpticsModel:
         # Set by each expand() call; read by Scene for render metadata.
         self.last_k: int = 1
         self.last_blur_px: float = 0.0
+        self.last_clamped: bool = False
+        self._warned_clamp = False
+
+    def _warn_clamp(self, m: int, k_needed: int, blur_px: float, skipped: bool) -> None:
+        if self._warned_clamp:
+            return
+        self._warned_clamp = True
+        what = (
+            "skipping the defocus expansion (sources render in focus)"
+            if skipped
+            else f"rendering coarser (grainy donut, {self.last_k} samples)"
+        )
+        warnings.warn(
+            f"defocus blur of {blur_px:.0f} px across {m} sources wants {k_needed} "
+            f"pupil samples but optics.max_sub_sources={self.cfg.max_sub_sources} "
+            f"does not allow it — {what} rather than allocating unbounded "
+            f"memory/time. Raise max_sub_sources or reduce defocus/star count if "
+            f"fidelity matters at this blur.",
+            stacklevel=3,
+        )
 
     def blur_radius_px(self, defocus_um: float = 0.0) -> float:
         """Worst-case geometric blur radius (px) at a commanded focal shift.
@@ -266,14 +287,31 @@ class OpticsModel:
         self.last_blur_px = blur_px
         if blur_px < self.SKIP_BLUR_SIGMA * sigma and not needs_grad:
             self.last_k = 1
+            self.last_clamped = False
             return positions, intensities
 
-        rung = next(
-            (r for r in self._rungs if r["k"] >= self._k_needed(blur_px, sigma)), self._rungs[-1]
-        )
-        self.last_k = rung["k"]
-
         m = positions.shape[0]
+        k_needed = self._k_needed(blur_px, sigma)
+        # Memory/time safety rail: cap sources * pupil_samples. Fast optics +
+        # large defocus + motion expansion multiply into tens of millions of
+        # splats otherwise. When the cap bites we coarsen the pupil sampling
+        # (grainy donuts; flux/moments stay exact) rather than blow up.
+        k_budget = max(1, self.cfg.max_sub_sources // max(m, 1))
+        allowed = [r for r in self._rungs if r["k"] <= k_budget]
+        if not allowed:
+            # Even the coarsest pupil sampling would blow the budget: skip the
+            # expansion outright (sources render with the in-focus PSF) instead
+            # of exceeding the cap. Explicit and warned — never an OOM.
+            self.last_k = 1
+            self.last_clamped = True
+            self._warn_clamp(m, k_needed, blur_px, skipped=True)
+            return positions, intensities
+        rung = next((r for r in allowed if r["k"] >= k_needed), allowed[-1])
+        self.last_k = rung["k"]
+        self.last_clamped = rung["k"] < k_needed
+        if self.last_clamped:
+            self._warn_clamp(m, k_needed, blur_px, skipped=False)
+
         if m == 0:
             return positions, intensities
 

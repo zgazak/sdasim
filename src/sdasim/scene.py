@@ -727,6 +727,9 @@ class Scene:
             ),
             "defocus_blur_px": self.optics.last_blur_px if self.optics is not None else 0.0,
             "pupil_samples": self.optics.last_k if self.optics is not None else 1,
+            "pupil_sampling_clamped": (
+                self.optics.last_clamped if self.optics is not None else False
+            ),
             "zeropoint": sensor.zeropoint,
             "a2d_dtype": sensor.a2d_dtype,
             "psf_model": sensor.psf_model,

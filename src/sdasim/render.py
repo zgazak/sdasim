@@ -196,8 +196,15 @@ def render_frame(
         exp_pos, exp_int = star_positions, star_intensities
 
     # Defocus/aberration expansion composes with motion expansion (pupil x time).
+    star_optics_stats = None
     if optics is not None:
         exp_pos, exp_int = optics.expand(exp_pos, exp_int, defocus_um, center, psf_sigma=psf_sigma)
+        if star_positions.shape[0] > 0:
+            # Stars are the dominant population; snapshot their expansion stats
+            # so the (often empty) target expansion below can't mask them in
+            # the frame metadata (e.g. report clamped=False after the stars
+            # were budget-clamped).
+            star_optics_stats = (optics.last_k, optics.last_blur_px, optics.last_clamped)
 
     star_signal = splat_gaussians(height, width, exp_pos, exp_int, psf_sigma)
 
@@ -234,6 +241,10 @@ def render_frame(
         tgt_exp_pos, tgt_exp_int = optics.expand(
             tgt_exp_pos, tgt_exp_int, defocus_um, center, psf_sigma=psf_sigma
         )
+        if star_optics_stats is not None:
+            k, blur, clamped = star_optics_stats
+            optics.last_k, optics.last_blur_px = k, blur
+            optics.last_clamped = clamped or optics.last_clamped
 
     target_signal = splat_gaussians(height, width, tgt_exp_pos, tgt_exp_int, psf_sigma)
 

@@ -319,6 +319,31 @@ class TestReviewRegressions:
         epos, _ = model.expand(pos, ints, torch.tensor(800.0, dtype=torch.float64), CENTER)
         assert epos.dtype == torch.float32
 
+    def test_sub_source_budget_caps_k(self):
+        """f/2.25-style blowup: N x K must respect max_sub_sources (OOM guard)."""
+        cfg = OpticsConfig(
+            enabled=True,
+            fnumber=2.25,
+            obscuration=0.6,
+            pixel_pitch_um=10.0,
+            max_defocus_um=10000.0,
+            max_sub_sources=200_000,
+            aberrations=AberrationsConfig(),
+        )
+        model = OpticsModel(cfg, SIGMA, H, W)
+        m = 9000  # e.g. 450 stars x t_osf 20 motion expansion
+        pos = torch.rand(m, 2) * 200
+        ints = torch.rand(m)
+        with pytest.warns(UserWarning, match="max_sub_sources"):
+            epos, eint = model.expand(pos, ints, 5000.0, CENTER)
+        assert epos.shape[0] <= cfg.max_sub_sources
+        assert model.last_clamped
+        assert torch.allclose(eint.sum(), ints.sum(), rtol=1e-4)  # flux still exact
+        # Small frames at the same defocus are NOT clamped
+        few = model.expand(pos[:10], ints[:10], 5000.0, CENTER)[0]
+        assert not model.last_clamped
+        assert few.shape[0] > 10 * 256
+
     def test_empty_frame_reports_frame_level_k(self):
         """m==0 must not leave stale (or misleadingly reset) sampling metadata."""
         model = make_model()
