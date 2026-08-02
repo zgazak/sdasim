@@ -168,6 +168,15 @@ class AberrationsConfig:
     # coma_x/coma_y, which are field-CONSTANT (decenter/tilt miscollimation:
     # every star gets the same tail).
     coma_radial: float = 0.0
+    # Field-quadratic astigmatism: waves RMS at the field CORNER, growing as
+    # field radius squared with the doubled-angle orientation rule (the astig
+    # axis tracks the field azimuth: corner stars elongate radially on one side
+    # of focus, tangentially on the other). This is the intrinsic off-axis
+    # astigmatism every telescope has when aligned — the dominant field
+    # aberration of RC-style designs. Combined with the field-CONSTANT
+    # astig_0/astig_45 (miscollimation), it produces binodal astigmatism: two
+    # off-center points of zero astigmatism.
+    astig_radial: float = 0.0
 
 
 @dataclass
@@ -212,7 +221,8 @@ class SceneConfig:
     # expansion combined). Converted to a sub-source cap via a splat-throughput
     # measurement on this machine at Scene construction. Motion sampling is
     # served first (beading is more visible than donut graininess); the defocus
-    # model gets the remainder. Degradations are flagged in render metadata.
+    # stage then divides the same pool by the already-expanded source count.
+    # Degradations are flagged in render metadata.
     max_render_seconds: float = 0.5
     # Sub-source spacing pin, in units of psf_sigma. None (default) = auto:
     # derived per frame from the brightest source vs the frame's noise floor so

@@ -151,20 +151,19 @@ class Scene:
                     "cannot be defocused geometrically"
                 )
             optics_budget = None
-            if config.optics.max_sub_sources is None:
-                seconds = (
-                    config.optics.max_render_seconds
-                    if config.optics.max_render_seconds is not None
-                    else config.max_render_seconds
-                )
-                if seconds is not None and seconds > 0:
-                    from sdasim.optics import _measure_splat_rate, _round_sig
+            seconds = (
+                config.optics.max_render_seconds
+                if config.optics.max_render_seconds is not None
+                else config.max_render_seconds
+            )
+            if config.optics.max_sub_sources is None and seconds is not None and seconds > 0:
+                from sdasim.optics import _measure_splat_rate, _round_sig
 
-                    self._splat_rate = _measure_splat_rate(
-                        self.sensor.height, self.sensor.width,
-                        self.sensor.psf_sigma, self.device,
-                    )
-                    optics_budget = _round_sig(seconds * self._splat_rate, 2)
+                self._splat_rate = _measure_splat_rate(
+                    self.sensor.height, self.sensor.width,
+                    self.sensor.psf_sigma, self.device,
+                )
+                optics_budget = _round_sig(seconds * self._splat_rate, 2)
             self.optics = OpticsModel(
                 config.optics,
                 self.sensor.psf_sigma,
@@ -172,6 +171,7 @@ class Scene:
                 self.sensor.width,
                 device=self.device,
                 budget_sub_sources=optics_budget,
+                budget_seconds=seconds,
                 splat_rate=self._splat_rate,
             )
 
@@ -855,7 +855,7 @@ class Scene:
             "pupil_sampling_clamped": (
                 self.optics.last_clamped if self.optics is not None else False
             ),
-            "pupil_sample_budget": (
+            "sub_source_budget": (
                 self.optics.max_sub_sources if self.optics is not None else None
             ),
             "zeropoint": sensor.zeropoint,

@@ -21,7 +21,19 @@ Physics (geometric optics; Mahajan conventions):
   * Static aberrations are RMS-normalized (Noll) Zernike coefficients in
     waves RMS — the numbers an interferometer or a Zemax "Zernike Standard"
     analysis reports. 1 wave RMS of Z4 corresponds to a focal shift of
-    ``16 * sqrt(3) * N^2 * lambda``.
+    ``16 * sqrt(3) * N^2 * lambda``. Coefficients are CIRCULAR-pupil Noll:
+    on an obscured pupil the RMS reading is approximate (Mahajan annular
+    Zernikes would be exact).
+  * Field dependence follows the third-order wave-aberration expansion. The
+    plain coefficients (defocus, astig_0/45, coma_x/y, spherical) are
+    field-CONSTANT (miscollimation/design-residual signatures). The field
+    terms scale the same pupil polynomials with per-source coefficient laws:
+    ``field_curvature`` adds Z4 growing as |h|^2; ``coma_radial`` drives the
+    (Z8, Z7) pair linearly along the field vector h; ``astig_radial`` drives
+    (Z6, Z5) as the SQUARE of the field vector (doubled-angle rule — the astig
+    axis tracks the field azimuth). Constant + quadratic astig yields binodal
+    astigmatism. h is corner-normalized: each field term's value is its waves
+    RMS at the field corner.
 
 Conventions:
 
@@ -59,6 +71,16 @@ _GOLDEN_ANGLE = math.pi * (3.0 - math.sqrt(5.0))
 # Order of the static aberration terms in the gradient basis (see _zernike_grad).
 _STATIC_TERMS = ("astig_0", "astig_45", "coma_x", "coma_y", "spherical")
 
+# max |grad Z| over the annulus per term (rim-dominated for every eps), for
+# the worst-case blur-radius bound.
+_GRAD_MAX = {
+    "astig_0": 2 * math.sqrt(6),
+    "astig_45": 2 * math.sqrt(6),
+    "coma_x": 7 * math.sqrt(8),
+    "coma_y": 7 * math.sqrt(8),
+    "spherical": 12 * math.sqrt(5),
+}
+
 
 def pupil_samples(k: int, obscuration: float, device=None) -> tuple[Tensor, Tensor]:
     """~K deterministic annular-pupil quadrature nodes: (points (K', 2), weights (K',)).
@@ -72,18 +94,23 @@ def pupil_samples(k: int, obscuration: float, device=None) -> tuple[Tensor, Tens
 
     Each ring's node radius is its RMS radius and its weight is its exact area
     fraction (split evenly among its points), so the set integrates constants
-    and rho^2 over the pupil exactly: flux and blur second moments are unbiased
-    at any K. The trade-off of RMS-node placement is that the outermost node
-    sits ~dr/2 inside the geometric rim, so a donut's outer edge reads a few
-    percent small at coarse rungs (the deficit shrinks as K grows); flux,
-    second moments, and HFD are unaffected. Weights sum to 1. The actual count
-    K' lands within a few points of the request. Point columns are (px, py).
+    and rho^2 over the pupil exactly: flux is conserved at any K, and blur
+    second moments are exact for offsets linear in p (defocus, astigmatism;
+    coma/spherical moments converge with K). RMS-node placement puts the
+    outermost node ~dr/2 inside the geometric rim, so a donut's outer edge
+    reads a few percent small at coarse rungs (the deficit shrinks as K
+    grows). Weights sum to 1. The actual count K' tracks the request at large
+    K but floors at the 2-ring minimum (which grows with obscuration: ~14 at
+    eps=0, ~50 at eps=0.6). Point columns are (px, py).
+
+    The float64 quadrature is done on CPU (MPS has no float64) and only the
+    float32 result moves to ``device``.
     """
     eps = obscuration
     area = math.pi * (1.0 - eps * eps)
     dr = math.sqrt(area / max(k, 4))
     # At least 2 rings: a single ring renders a blur DISC as a hollow circle
-    # (flux/moments stay exact, but the shape is wrong at coarse rungs).
+    # (flux stays exact, but the shape is wrong at coarse rungs).
     n_rings = max(2, round((1.0 - eps) / dr))
     dr = (1.0 - eps) / n_rings
     pts, wts = [], []
@@ -92,16 +119,16 @@ def pupil_samples(k: int, obscuration: float, device=None) -> tuple[Tensor, Tens
         hi = lo + dr
         rho = math.sqrt((lo * lo + hi * hi) / 2.0)  # RMS node: exact second moment
         m = max(2, 2 * round(math.pi * rho / dr))  # even count, ~dr azimuthal spacing
-        theta = (
-            j * _GOLDEN_ANGLE
-            + 2.0 * math.pi * torch.arange(m, dtype=torch.float64, device=device) / m
-        )
+        theta = j * _GOLDEN_ANGLE + 2.0 * math.pi * torch.arange(m, dtype=torch.float64) / m
         pts.append(rho * torch.stack([torch.cos(theta), torch.sin(theta)], dim=1))
         ring_area = math.pi * (hi * hi - lo * lo)
-        wts.append(torch.full((m,), ring_area / (area * m), dtype=torch.float64, device=device))
+        wts.append(torch.full((m,), ring_area / (area * m), dtype=torch.float64))
     p = torch.cat(pts, dim=0)
     w = torch.cat(wts, dim=0)
-    return p.to(torch.float32), (w / w.sum()).to(torch.float32)
+    return (
+        p.to(device=device, dtype=torch.float32),
+        (w / w.sum()).to(device=device, dtype=torch.float32),
+    )
 
 
 def _zernike_grad(term: str, p: Tensor) -> Tensor:
@@ -158,8 +185,11 @@ def _measure_splat_rate(height: int, width: int, sigma: float, device, n: int = 
     from sdasim.splat import splat_gaussians
 
     radius = max(1, math.ceil(3.0 * sigma))
-    scale = torch.tensor([float(height), float(width)], device=device)
-    pos = torch.rand(n, 2, device=device) * scale
+    # Local generator: the benchmark must not consume the caller's seeded RNG
+    # stream (it would shift every downstream noise draw when optics is on).
+    gen = torch.Generator().manual_seed(0)
+    scale = torch.tensor([float(height), float(width)])
+    pos = (torch.rand(n, 2, generator=gen) * scale).to(device)
     ints = torch.ones(n, device=device)
     # Warm up first: lazy device init and kernel compilation would otherwise be
     # charged to the measurement.
@@ -175,7 +205,7 @@ class OpticsModel:
     """Precomputed pupil geometry for ``expand()`` (built once per Scene).
 
     Precomputes the full ladder of pupil sample sets (K = 4, 8, 16, ... 4096;
-    ~163 KB in total, so there is nothing to gain by sizing it smaller) and,
+    well under a megabyte in total, so there is nothing to gain by sizing it smaller) and,
     per rung, the image-plane offsets of the static non-defocus aberrations
     plus the defocus gradient direction. ``expand()`` then only scales/adds
     precomputed tensors, picks the smallest rung that keeps sub-source spacing
@@ -202,12 +232,13 @@ class OpticsModel:
         width: int,
         device=None,
         budget_sub_sources: int | None = None,
+        budget_seconds: float | None = None,
         splat_rate: float | None = None,
     ):
         if not 0.0 <= cfg.obscuration < 1.0:
             raise ValueError(f"obscuration must be in [0, 1), got {cfg.obscuration}")
-        if cfg.f_number <= 0 or cfg.pixel_pitch_um <= 0:
-            raise ValueError("f_number and pixel_pitch_um must be positive")
+        if cfg.f_number <= 0 or cfg.pixel_pitch_um <= 0 or cfg.wavelength_nm <= 0:
+            raise ValueError("f_number, pixel_pitch_um and wavelength_nm must be positive")
         self.cfg = cfg
         self.sigma = float(psf_sigma)
         n = cfg.f_number
@@ -221,9 +252,10 @@ class OpticsModel:
         self._c4_static_um = ab.defocus * lam_um
         self._fc_um = ab.field_curvature * lam_um
         self._cr_um = ab.coma_radial * lam_um
-        self._static_um = [getattr(ab, t) * lam_um for t in _STATIC_TERMS]
-        # Field radius normalization: field_curvature/coma_radial are the values
-        # at the field corner, growing (quadratically / linearly) from boresight.
+        self._ar_um = ab.astig_radial * lam_um
+        self._static_terms_um = [getattr(ab, t) * lam_um for t in _STATIC_TERMS]
+        # Field radius normalization: the field terms (field_curvature,
+        # coma_radial, astig_radial) are the values at the field corner.
         self._corner_r2 = (height / 2.0) ** 2 + (width / 2.0) ** 2
 
         # Full rung ladder: every power of two up to the sampling ceiling. The
@@ -235,7 +267,7 @@ class OpticsModel:
             p, w = pupil_samples(k, cfg.obscuration, device=device)
             grad4 = _zernike_grad("defocus", p) * self._px_per_um  # px per micron of c4
             static = torch.zeros_like(p)
-            for c_um, term in zip(self._static_um, _STATIC_TERMS):
+            for c_um, term in zip(self._static_terms_um, _STATIC_TERMS):
                 if c_um != 0.0:
                     static = static + c_um * _zernike_grad(term, p) * self._px_per_um
             # (px, py) gradient components -> (row, col) image offsets. Ring
@@ -247,20 +279,29 @@ class OpticsModel:
                     # Field-linear coma needs the per-source coma bases too.
                     rung["grad8"] = (_zernike_grad("coma_x", p) * self._px_per_um).flip(1)
                     rung["grad7"] = (_zernike_grad("coma_y", p) * self._px_per_um).flip(1)
+                if self._ar_um != 0.0:
+                    # Field-quadratic astigmatism needs the astig bases.
+                    rung["grad6"] = (_zernike_grad("astig_0", p) * self._px_per_um).flip(1)
+                    rung["grad5"] = (_zernike_grad("astig_45", p) * self._px_per_um).flip(1)
                 self._rungs.append(rung)
             if k >= 4096:
                 break
             k *= 2
 
         # Cost ceiling: an explicit count wins; then a caller-shared budget
-        # (Scene measures splat throughput once for motion AND defocus);
-        # otherwise calibrate this machine ourselves (standalone use).
-        self._budget_seconds = (
-            cfg.max_render_seconds if cfg.max_render_seconds is not None else 0.5
-        )
+        # (Scene resolves the effective seconds and measures splat throughput
+        # once for motion AND defocus); otherwise calibrate this machine
+        # ourselves (standalone use). budget_seconds <= 0 disables the cap.
+        if budget_seconds is None:
+            budget_seconds = cfg.max_render_seconds if cfg.max_render_seconds is not None else 0.5
+        self._budget_seconds = budget_seconds
+        self.max_sub_sources: int | None
         if cfg.max_sub_sources is not None:
             self.max_sub_sources = int(cfg.max_sub_sources)
             self.splat_rate = None
+        elif budget_seconds <= 0:
+            self.max_sub_sources = None  # unlimited
+            self.splat_rate = splat_rate
         elif budget_sub_sources is not None:
             self.max_sub_sources = int(budget_sub_sources)
             self.splat_rate = splat_rate
@@ -313,26 +354,20 @@ class OpticsModel:
     def blur_radius_px(self, defocus_um: float = 0.0) -> float:
         """Worst-case geometric blur radius (px) at a commanded focal shift.
 
-        Includes the static aberrations and field curvature. Useful to size
-        pads/margins for sources just outside the frame whose defocused flux
-        still lands in it.
+        Includes the static aberrations and all field terms at their corner
+        (worst-case) values. Useful to size pads/margins for sources just
+        outside the frame whose defocused flux still lands in it.
         """
         c4 = abs(self._c4_static_um + defocus_um * self._c4_per_defocus_um) + abs(self._fc_um)
         return self._blur_radius_px(c4)
 
     def _blur_radius_px(self, c4_um: float) -> float:
         """Upper-bound blur radius (px) for a defocus coefficient plus statics."""
-        grad_max = {
-            "astig_0": 2 * math.sqrt(6),
-            "astig_45": 2 * math.sqrt(6),
-            "coma_x": 7 * math.sqrt(8),
-            "coma_y": 7 * math.sqrt(8),
-            "spherical": 12 * math.sqrt(5),
-        }
         r = abs(c4_um) * 4 * math.sqrt(3)
-        for c_um, term in zip(self._static_um, _STATIC_TERMS):
-            r += abs(c_um) * grad_max[term]
+        for c_um, term in zip(self._static_terms_um, _STATIC_TERMS):
+            r += abs(c_um) * _GRAD_MAX[term]
         r += abs(self._cr_um) * 7 * math.sqrt(8)  # field-linear coma, worst at the corner
+        r += abs(self._ar_um) * 2 * math.sqrt(6)  # field-quadratic astig, worst at the corner
         return r * self._px_per_um
 
     def _k_needed(self, blur_px: float, sigma: float | None = None) -> int:
@@ -386,26 +421,31 @@ class OpticsModel:
         # Memory/time safety rail: cap sources * pupil_samples. Fast optics +
         # large defocus + motion expansion multiply into tens of millions of
         # splats otherwise. When the cap bites we coarsen the pupil sampling
-        # (grainy donuts; flux/moments stay exact) rather than blow up.
-        k_budget = max(1, self.max_sub_sources // max(m, 1))
+        # (grainy donuts; flux stays exact) rather than blow up.
+        if self.max_sub_sources is None:
+            k_budget = self._rungs[-1]["k"]  # budget disabled
+        else:
+            k_budget = max(1, self.max_sub_sources // max(m, 1))
         allowed = [r for r in self._rungs if r["k"] <= k_budget]
         if not allowed:
             # The coarsest sample set alone exceeds the budget. Overshooting a
             # *time* target slightly is far better than silently dropping the
             # defocus (peak memory is bounded by the chunked splat either way),
-            # so only bail out when the overshoot is gross.
+            # so bail out only when the overshoot is gross — and never on a
+            # grad-tracking defocus, which must stay in the autograd graph.
             coarsest = self._rungs[0]
-            if coarsest["k"] <= self.SKIP_OVERSHOOT * k_budget:
+            if needs_grad or coarsest["k"] <= self.SKIP_OVERSHOOT * k_budget:
                 allowed = [coarsest]
             else:
                 self.last_k = 1
                 self.last_clamped = True
-                self._warn_clamp(m, k_needed, blur_px, skipped=True)
+                if m > 0:
+                    self._warn_clamp(m, k_needed, blur_px, skipped=True)
                 return positions, intensities
         rung = next((r for r in allowed if r["k"] >= k_needed), allowed[-1])
         self.last_k = rung["k"]
         self.last_clamped = rung["k"] < k_needed
-        if self.last_clamped:
+        if self.last_clamped and m > 0:
             self._warn_clamp(m, k_needed, blur_px, skipped=False)
 
         if m == 0:
@@ -415,7 +455,7 @@ class OpticsModel:
         # curvature, quadratic in boresight-relative field radius).
         c4_um = self._c4_static_um + defocus_um * self._c4_per_defocus_um
         rel = None
-        if self._fc_um != 0.0 or self._cr_um != 0.0:
+        if self._fc_um != 0.0 or self._cr_um != 0.0 or self._ar_um != 0.0:
             rel = positions - positions.new_tensor(center)
         if self._fc_um != 0.0:
             r2 = (rel * rel).sum(dim=1)
@@ -424,15 +464,25 @@ class OpticsModel:
         c4_um = c4_um.reshape(-1, 1, 1)  # (M or 1, 1, 1)
 
         offsets = rung["static"].unsqueeze(0) + c4_um * rung["grad4"].unsqueeze(0)
-        if self._cr_um != 0.0:
-            # Field-linear coma: the coma vector tracks the field vector, so the
-            # Z8 (x/col) component scales with the source's column offset and Z7
-            # (y/row) with its row offset, normalized to the corner radius.
-            # Positive coma_radial points tails away from boresight.
+        if self._cr_um != 0.0 or self._ar_um != 0.0:
             r_corner = math.sqrt(self._corner_r2)
-            c8 = (self._cr_um * rel[:, 1] / r_corner).reshape(-1, 1, 1)
-            c7 = (self._cr_um * rel[:, 0] / r_corner).reshape(-1, 1, 1)
+            hx = rel[:, 1] / r_corner  # field vector, corner-normalized (x = col)
+            hy = rel[:, 0] / r_corner  # (y = row)
+        if self._cr_um != 0.0:
+            # Field-linear coma: the coma vector tracks the field vector — the
+            # Z8 (x/col) component scales with hx and Z7 (y/row) with hy.
+            # Positive coma_radial points tails away from boresight.
+            c8 = (self._cr_um * hx).reshape(-1, 1, 1)
+            c7 = (self._cr_um * hy).reshape(-1, 1, 1)
             offsets = offsets + c8 * rung["grad8"].unsqueeze(0) + c7 * rung["grad7"].unsqueeze(0)
+        if self._ar_um != 0.0:
+            # Field-quadratic astigmatism with the doubled-angle rule: the astig
+            # pair transforms as the SQUARE of the field vector, (c6 + i*c5) =
+            # A * (hx + i*hy)^2 — magnitude grows as |h|^2 and the axis tracks
+            # the field azimuth (radial/tangential line foci across focus).
+            c6 = (self._ar_um * (hx * hx - hy * hy)).reshape(-1, 1, 1)
+            c5 = (self._ar_um * 2.0 * hx * hy).reshape(-1, 1, 1)
+            offsets = offsets + c6 * rung["grad6"].unsqueeze(0) + c5 * rung["grad5"].unsqueeze(0)
         expanded_pos = (positions.unsqueeze(1) + offsets).reshape(-1, 2)
         expanded_int = (intensities.unsqueeze(1) * rung["w"].unsqueeze(0)).reshape(-1)
         return expanded_pos, expanded_int

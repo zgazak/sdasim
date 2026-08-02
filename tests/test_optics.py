@@ -220,6 +220,45 @@ class TestAberrations:
         assert mrr > 1.5 * mcc
         assert cr_row > H - 30.0
 
+    def test_astig_radial_doubled_angle_orientation(self):
+        """Off-axis astig: the axis tracks the field azimuth. Under the same
+        defocus, a +col-edge star elongates along cols while a +row-edge star
+        elongates along rows (each along its own field direction)."""
+        model = make_model(obscuration=0.0, astig_radial=0.8)
+        img_col = render_star(model, 900.0, pos=[H / 2.0, W - 30.0])
+        img_row = render_star(model, 900.0, pos=[H - 30.0, W / 2.0])
+        _, _, _, mrr_c, mcc_c = moments(img_col)
+        _, _, _, mrr_r, mcc_r = moments(img_row)
+        assert mcc_c > 1.2 * mrr_c  # col-edge star: col-elongated
+        assert mrr_r > 1.2 * mcc_r  # row-edge star: row-elongated
+        # and the elongation axis flips with focus side (the direction signal)
+        img_col_in = render_star(model, -900.0, pos=[H / 2.0, W - 30.0])
+        _, _, _, mrr_ci, mcc_ci = moments(img_col_in)
+        assert mrr_ci > 1.2 * mcc_ci
+
+    def test_astig_radial_grows_quadratically(self):
+        """Coefficient ~ h^2: the mid-field star shows ~1/4 the corner effect."""
+        model = make_model(obscuration=0.0, astig_radial=0.8)
+        edge = W / 2.0 - 30.0
+        _, _, _, mrr_e, mcc_e = moments(render_star(model, 900.0, pos=[H / 2.0, W / 2.0 + edge]))
+        _, _, _, mrr_m, mcc_m = moments(
+            render_star(model, 900.0, pos=[H / 2.0, W / 2.0 + edge / 2.0])
+        )
+        # asymmetry (mcc - mrr) is ~linear in the astig coefficient here
+        assert (mcc_e - mrr_e) > 2.5 * (mcc_m - mrr_m)
+
+    def test_binodal_astigmatism_from_constant_plus_quadratic(self):
+        """Constant + quadratic astig cancel at two off-center nodes."""
+        model = make_model(obscuration=0.0, astig_0=-0.2, astig_radial=0.8)
+        # Node on the +col axis where astig_0 + astig_radial*(hx^2) = 0:
+        # hx = sqrt(0.2/0.8) = 0.5 -> col offset = 0.5 * r_corner
+        r_corner = math.hypot(H / 2.0, W / 2.0)
+        node_col = W / 2.0 + 0.5 * r_corner
+        _, _, _, mrr_n, mcc_n = moments(render_star(model, 900.0, pos=[H / 2.0, node_col]))
+        _, _, _, mrr_0, mcc_0 = moments(render_star(model, 900.0, pos=[H / 2.0, W / 2.0]))
+        # center keeps the constant astig; the node is nearly symmetric
+        assert abs(mcc_n - mrr_n) < 0.3 * abs(mcc_0 - mrr_0)
+
     def test_field_curvature_blurs_corner(self):
         model = make_model(obscuration=0.0, field_curvature=1.5)
         img_center = render_star(model, 0.0, pos=[H / 2.0, W / 2.0])
