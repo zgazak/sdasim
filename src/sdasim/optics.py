@@ -220,9 +220,6 @@ class OpticsModel:
 
     # Passthrough when total blur radius is below this many psf_sigma.
     SKIP_BLUR_SIGMA = 0.3
-    # How far the coarsest sample set may overshoot the budget before the
-    # defocus is dropped entirely rather than rendered over-budget.
-    SKIP_OVERSHOOT = 8
 
     def __init__(
         self,
@@ -315,19 +312,17 @@ class OpticsModel:
         self.last_clamped: bool = False
         self._warned_clamp = False
 
-    def _warn_clamp(self, m: int, k_needed: int, blur_px: float, skipped: bool) -> None:
+    def _warn_clamp(self, m: int, k_needed: int, blur_px: float, over_budget: bool) -> None:
         if self._warned_clamp:
             return
         self._warned_clamp = True
-        what = (
-            "skipping the defocus expansion (sources render in focus)"
-            if skipped
-            else f"rendering coarser (grainy donut, {self.last_k} samples)"
-        )
+        what = f"rendering coarser (grainy donut, {self.last_k} samples)"
+        if over_budget:
+            what += " and exceeding the budget rather than dropping the defocus"
         # Two different constraints can bite; naming the wrong one sends the
         # reader to the wrong knob. The ladder is the binding one only when we
         # already handed back its top rung.
-        if not skipped and self.last_k == self._rungs[-1]["k"]:
+        if self.last_k == self._rungs[-1]["k"]:
             cause = (
                 f"pupil sampling is capped at {self._rungs[-1]['k']} samples — this blur is "
                 f"past what the model resolves; reduce the commanded defocus"
@@ -427,26 +422,22 @@ class OpticsModel:
         else:
             k_budget = max(1, self.max_sub_sources // max(m, 1))
         allowed = [r for r in self._rungs if r["k"] <= k_budget]
-        if not allowed:
-            # The coarsest sample set alone exceeds the budget. Overshooting a
-            # *time* target slightly is far better than silently dropping the
-            # defocus (peak memory is bounded by the chunked splat either way),
-            # so bail out only when the overshoot is gross — and never on a
-            # grad-tracking defocus, which must stay in the autograd graph.
-            coarsest = self._rungs[0]
-            if needs_grad or coarsest["k"] <= self.SKIP_OVERSHOOT * k_budget:
-                allowed = [coarsest]
-            else:
-                self.last_k = 1
-                self.last_clamped = True
-                if m > 0:
-                    self._warn_clamp(m, k_needed, blur_px, skipped=True)
-                return positions, intensities
+        over_budget = not allowed
+        if over_budget:
+            # Even the coarsest sample set exceeds the budget. The budget is a
+            # cost governor, NOT a physics switch: commanded defocus must never
+            # silently vanish (and the threshold is a machine-load-dependent
+            # calibration, so a skip here would flip nondeterministically
+            # between runs). Render the coarsest sampling, exceed the time
+            # target, and say so; peak memory stays bounded by the chunked
+            # splat, and Scene relaxes motion sampling under heavy blur so
+            # this path stays rare.
+            allowed = [self._rungs[0]]
         rung = next((r for r in allowed if r["k"] >= k_needed), allowed[-1])
         self.last_k = rung["k"]
-        self.last_clamped = rung["k"] < k_needed
+        self.last_clamped = over_budget or rung["k"] < k_needed
         if self.last_clamped and m > 0:
-            self._warn_clamp(m, k_needed, blur_px, skipped=False)
+            self._warn_clamp(m, k_needed, blur_px, over_budget=over_budget)
 
         if m == 0:
             return positions, intensities

@@ -680,14 +680,32 @@ class Scene:
             else float(psf_sigma)
         )
         r_max = 0.5 * math.hypot(sensor.height, sensor.width)
+        # Defocus relaxes the streak-sampling requirement: each sub-source is
+        # smeared over the whole donut, so the along-track comb only needs
+        # spacing <= blur_radius/3 (annulus-MTF attenuation keeps the residual
+        # ripple under ~3% there — numerically verified; do NOT be greedier,
+        # the MTF decays only algebraically). This is also what keeps the
+        # sub-source budget from starving the pupil sampling when a frame is
+        # commanded far out of focus.
+        blur_spacing = 0.0
+        if self.optics is not None:
+            d_scalar = (
+                float(defocus_um.detach().reshape(()).item())
+                if isinstance(defocus_um, Tensor)
+                else float(defocus_um)
+            )
+            blur_spacing = self.optics.blur_radius_px(d_scalar) / 3.0
         spacing_px = None
         star_osf_clamped = False
         if star_osf is None:
             peak_pe, noise_pe = self._streak_photometry(
                 star_intensities, star_vel, star_rot, sensor.exposure, sigma_scalar, r_max
             )
-            spacing_px = motion_sampling_spacing(
-                sigma_scalar, peak_pe, noise_pe, self.config.sampling_quality
+            spacing_px = max(
+                motion_sampling_spacing(
+                    sigma_scalar, peak_pe, noise_pe, self.config.sampling_quality
+                ),
+                blur_spacing,
             )
             star_osf, star_osf_clamped = resolve_temporal_osf(
                 None, star_vel, star_rot, sensor.exposure, spacing_px, r_max,
@@ -715,8 +733,11 @@ class Scene:
             )
             target_osf, target_osf_clamped = resolve_temporal_osf(
                 None, [tmax, 0.0], 0.0, sensor.exposure,
-                motion_sampling_spacing(
-                    sigma_scalar, t_peak, t_noise, self.config.sampling_quality
+                max(
+                    motion_sampling_spacing(
+                        sigma_scalar, t_peak, t_noise, self.config.sampling_quality
+                    ),
+                    blur_spacing,
                 ),
                 0.0, target_positions.shape[0], remaining,
             )

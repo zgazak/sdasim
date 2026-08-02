@@ -396,10 +396,10 @@ class TestReviewRegressions:
         ints = torch.rand(m)
         with pytest.warns(UserWarning, match="max_sub_sources"):
             epos, eint = model.expand(pos, ints, 5000.0, CENTER)
-        # The coarsest sample set may overshoot a *time* budget slightly rather
-        # than drop the defocus entirely, but the overshoot is bounded.
-        assert epos.shape[0] <= OpticsModel.SKIP_OVERSHOOT * cfg.max_sub_sources
-        assert model.last_k <= model._rungs[0]["k"]
+        # The budget coarsens sampling; it must NEVER drop the defocus. When
+        # even the coarsest rung exceeds the budget, we render it anyway.
+        assert model.last_k == model._rungs[0]["k"]
+        assert epos.shape[0] == 9000 * model.last_k
         assert model.last_clamped
         assert torch.allclose(eint.sum(), ints.sum(), rtol=1e-4)  # flux still exact
         # Small frames at the same defocus are NOT clamped
@@ -447,6 +447,53 @@ class TestReviewRegressions:
         ks = [r["k"] for r in make_model()._rungs]
         assert ks[-1] > 4000
         assert ks == sorted(set(ks))  # strictly increasing, no duplicates
+
+    def test_defocus_never_dropped_by_budget(self):
+        """THE regression: commanded defocus must render at ANY source count.
+
+        The budget skip used to return sources unexpanded (sharp stars at
+        -10000 um!) whenever even the coarsest rung exceeded the cap — a
+        threshold that moved with the machine-load-dependent splat-rate
+        calibration, so the same frame flipped between donuts and sharp
+        stars across runs. The budget may coarsen; it may never drop.
+        """
+        cfg = OpticsConfig(
+            enabled=True, f_number=2.25, obscuration=0.6, pixel_pitch_um=10.0,
+            max_sub_sources=100_000, aberrations=AberrationsConfig(),
+        )
+        model = OpticsModel(cfg, SIGMA, H, W)
+        m = 50_000  # coarsest rung alone is 25x the budget
+        pos = torch.rand(m, 2) * 200
+        ints = torch.ones(m)
+        with pytest.warns(UserWarning, match="exceeding the budget"):
+            epos, _ = model.expand(pos, ints, -10000.0, CENTER)
+        assert model.last_k == model._rungs[0]["k"]  # coarsest, but EXPANDED
+        assert epos.shape[0] == m * model.last_k
+        assert model.last_clamped
+
+    def test_heavy_defocus_relaxes_motion_sampling(self):
+        """The donut is the smoothing kernel: far from focus, auto t_osf drops
+        (spacing floor = blur/3), freeing the budget for pupil sampling."""
+        from sdasim.config import StarMotionConfig
+
+        def render(defocus):
+            cfg = SceneConfig()
+            cfg.seed = 5
+            cfg.sensor.height = cfg.sensor.width = 128
+            cfg.sensor.psf_sigma = SIGMA
+            cfg.star_motion = StarMotionConfig(translation=[0.0, 8.0])
+            cfg.optics = OpticsConfig(
+                enabled=True, f_number=2.25, obscuration=0.6, pixel_pitch_um=10.0,
+                max_sub_sources=5_000_000, aberrations=AberrationsConfig(),
+            )
+            scene = Scene(cfg)
+            _, _, _, meta = scene.render_signals(0, defocus_um=defocus)
+            return meta
+
+        sharp = render(0.0)
+        blurred = render(-8000.0)
+        assert blurred["star_temporal_osf"] < sharp["star_temporal_osf"]
+        assert blurred["pupil_samples"] > 1  # and the donut actually renders
 
     def test_empty_frame_reports_frame_level_k(self):
         """m==0 must not leave stale (or misleadingly reset) sampling metadata."""
