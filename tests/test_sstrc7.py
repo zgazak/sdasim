@@ -1,166 +1,180 @@
-"""Tests for the SSTRC7 zone reader's compact (numpy) representation + RA clip.
+"""Tests for the SSTRC7 wrapper.
 
-These don't need the on-disk catalog: ``query_by_min_max``'s index lookup, zone
-selection, and per-zone loading are monkeypatched with controlled data so the
-boolean-mask RA clip and structured-array concatenation can be verified directly
-(this is the behaviour that replaced the old list-of-dict / break-on-first-violation
-loop).
+The reader itself now lives in the ``sstrc7`` package, which has its own
+exactness tests against a brute-force scan. What matters here is the contract
+sdasim depends on: the structured-array return type, radian units, the
+magnitude sentinel, and catalog path resolution. A small synthetic catalog is
+written to a temp directory so these need no downloaded data.
 """
 
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
-from sdasim import sstrc7
-from sdasim.sstrc7 import _STAR_DTYPE, _BytesBoundedCache
+from sdasim import sstrc7 as wrapper
+from sdasim.sstrc7 import _STAR_DTYPE
 
+sstrc7 = pytest.importorskip("sstrc7", reason="needs the sstrc7 package")
+pytest.importorskip("astropy", reason="query_by_los needs astropy")
 
-def _zone(ra, dec=0.0, mv=10.0):
-    """Build a zone structured array from a list of RA values (radians)."""
-    ra = np.asarray(ra, dtype="f8")
-    out = np.empty(ra.shape[0], dtype=_STAR_DTYPE)
-    out["ra"] = ra
-    out["dec"] = dec
-    out["mv"] = mv
-    return out
-
-
-def _patch(monkeypatch, zones, zone_arrays):
-    """Stub the index/zone-selection/loader so query_by_min_max uses our data."""
-    monkeypatch.setattr(sstrc7, "load_index", lambda *a, **k: object())
-    monkeypatch.setattr(sstrc7, "select_zone", lambda *a, **k: zones)
-
-    def fake_loader(zone_id, pos, length, bound, rootPath, filter_center=None):
-        return zone_arrays[zone_id]
-
-    monkeypatch.setattr(sstrc7, "_load_stars_for_zone", fake_loader)
+from sstrc7._format import (  # noqa: E402
+    INDEX_FILENAME,
+    MAG_ABSENT,
+    MAS_PER_DEG,
+    N_DEC_ZONES,
+    N_RA_ZONES,
+    RECORD_DTYPE,
+    ZONE_HEIGHT_DEG,
+    ZONE_WIDTH_DEG,
+    BAND_INDEX,
+    zone_filename,
+)
 
 
-def test_returns_structured_array(monkeypatch):
-    zones = [{"id": 0, "pos": 0, "length": 3, "bound": "inside"}]
-    _patch(monkeypatch, zones, {0: _zone([1.0, 1.1, 1.2])})
-    out = sstrc7.query_by_min_max(0.0, 2.0, -1.0, 1.0)
+@pytest.fixture(scope="module")
+def catalog(tmp_path_factory):
+    """A synthetic catalog: a 2-degree grid of stars with known magnitudes."""
+    directory = tmp_path_factory.mktemp("sstrc7") / "catalog"
+    directory.mkdir()
+
+    ra_grid, dec_grid = np.meshgrid(np.arange(0.5, 360, 2.0), np.arange(-80.0, 80.1, 2.0))
+    ra = ra_grid.ravel()
+    dec = dec_grid.ravel()
+
+    records = np.zeros(ra.size, dtype=RECORD_DTYPE)
+    records["ra"] = np.round(ra * MAS_PER_DEG)
+    records["dec"] = np.round(dec * MAS_PER_DEG)
+    records["mag"] = MAG_ABSENT
+    records["mag"][:, BAND_INDEX["Johnson_V"]] = 12000  # 12.0 mag
+    records["mag"][:, BAND_INDEX["2MASS_J"]] = 10000  # 10.0 mag, for interpolation
+
+    index = np.zeros((N_DEC_ZONES, N_RA_ZONES, 2), dtype="<u4")
+    zone_of = np.clip(((dec + 90.0) / ZONE_HEIGHT_DEG).astype(int), 0, N_DEC_ZONES - 1)
+
+    for zone_id in range(N_DEC_ZONES):
+        in_zone = records[zone_of == zone_id]
+        in_zone = in_zone[np.argsort(in_zone["ra"], kind="stable")]
+        ra_zone = np.clip(
+            (in_zone["ra"] / MAS_PER_DEG / ZONE_WIDTH_DEG).astype(int), 0, N_RA_ZONES - 1
+        )
+        offset = 0
+        for r in range(N_RA_ZONES):
+            count = int((ra_zone == r).sum())
+            index[zone_id, r] = (offset, count)
+            offset += count
+        (directory / zone_filename(zone_id)).write_bytes(in_zone.tobytes())
+
+    (directory / INDEX_FILENAME).write_bytes(index.tobytes())
+    return directory
+
+
+def test_query_by_min_max_returns_the_expected_dtype(catalog):
+    out = wrapper.query_by_min_max(
+        np.radians(10.0), np.radians(20.0), np.radians(-5.0), np.radians(5.0), str(catalog)
+    )
     assert out.dtype == _STAR_DTYPE
-    assert out.shape == (3,)
-    assert np.allclose(out["ra"], [1.0, 1.1, 1.2])
+    assert out.shape[0] > 0
 
 
-def test_maxRA_truncates_at_first_violation(monkeypatch):
-    # Ascending RA; clip should drop everything from the first ra > ra_max.
-    zones = [{"id": 0, "pos": 0, "length": 5, "bound": "maxRA"}]
-    _patch(monkeypatch, zones, {0: _zone([1.0, 1.5, 2.0, 2.5, 3.0])})
-    out = sstrc7.query_by_min_max(0.0, 2.0, -1.0, 1.0)
-    # 2.0 is not > 2.0; 2.5 is the first violation -> keep [1.0, 1.5, 2.0]
-    assert np.allclose(out["ra"], [1.0, 1.5, 2.0])
+def test_query_by_min_max_is_in_radians(catalog):
+    out = wrapper.query_by_min_max(
+        np.radians(10.0), np.radians(20.0), np.radians(-5.0), np.radians(5.0), str(catalog)
+    )
+    assert np.all(out["ra"] >= np.radians(10.0)) and np.all(out["ra"] <= np.radians(20.0))
+    assert np.all(np.abs(out["dec"]) <= np.radians(5.0))
 
 
-def test_minRA_truncates_at_first_violation(monkeypatch):
-    # _load_stars_for_zone returns minRA zones reversed (descending RA); clip
-    # drops from the first ra < ra_min.
-    zones = [{"id": 0, "pos": 0, "length": 5, "bound": "minRA"}]
-    _patch(monkeypatch, zones, {0: _zone([3.0, 2.5, 2.0, 1.5, 1.0])})
-    out = sstrc7.query_by_min_max(2.0, 5.0, -1.0, 1.0)
-    # 2.0 is not < 2.0; 1.5 is the first violation -> keep [3.0, 2.5, 2.0]
-    assert np.allclose(out["ra"], [3.0, 2.5, 2.0])
+def test_query_by_min_max_clips_exactly(catalog):
+    """The grid is 2 degrees apart, so the count is exactly predictable."""
+    out = wrapper.query_by_min_max(
+        np.radians(0.0), np.radians(10.0), np.radians(-4.0), np.radians(4.0), str(catalog)
+    )
+    # RA 0.5, 2.5, 4.5, 6.5, 8.5 and dec -4, -2, 0, 2, 4 -> 5 x 5.
+    assert out.shape[0] == 25
 
 
-def test_inside_zone_not_clipped(monkeypatch):
-    zones = [{"id": 0, "pos": 0, "length": 3, "bound": "inside"}]
-    _patch(monkeypatch, zones, {0: _zone([0.1, 5.0, 9.9])})  # ignores ra bounds
-    out = sstrc7.query_by_min_max(1.0, 2.0, -1.0, 1.0)
-    assert out.shape == (3,)
+def test_query_by_min_max_wraps_through_zero(catalog):
+    out = wrapper.query_by_min_max(
+        np.radians(358.0), np.radians(2.0), np.radians(-1.0), np.radians(1.0), str(catalog)
+    )
+    # RA 358.5, 0.5 at dec 0.
+    assert out.shape[0] == 2
+    assert np.allclose(np.degrees(np.sort(out["ra"])), [0.5, 358.5])
 
 
-def test_no_violation_keeps_all(monkeypatch):
-    zones = [{"id": 0, "pos": 0, "length": 3, "bound": "maxRA"}]
-    _patch(monkeypatch, zones, {0: _zone([1.0, 1.2, 1.4])})
-    out = sstrc7.query_by_min_max(0.0, 2.0, -1.0, 1.0)
-    assert out.shape == (3,)
+def test_magnitude_comes_from_the_priority_band(catalog):
+    out = wrapper.query_by_min_max(
+        np.radians(0.0), np.radians(10.0), np.radians(-4.0), np.radians(4.0), str(catalog)
+    )
+    assert np.allclose(out["mv"], 12.0, atol=1e-3)
 
 
-def test_concatenates_multiple_zones(monkeypatch):
-    zones = [
-        {"id": 0, "pos": 0, "length": 2, "bound": "inside"},
-        {"id": 1, "pos": 0, "length": 2, "bound": "maxRA"},
-    ]
-    arrays = {0: _zone([0.5, 0.6]), 1: _zone([1.0, 9.0])}  # zone 1: 9.0 clipped
-    _patch(monkeypatch, zones, arrays)
-    out = sstrc7.query_by_min_max(0.0, 2.0, -1.0, 1.0)
-    assert np.allclose(out["ra"], [0.5, 0.6, 1.0])
+def test_filter_center_interpolates(catalog):
+    out = wrapper.query_by_min_max(
+        np.radians(0.0),
+        np.radians(10.0),
+        np.radians(-4.0),
+        np.radians(4.0),
+        str(catalog),
+        filter_center=1235.0,  # exactly 2MASS_J
+    )
+    assert np.allclose(out["mv"], 10.0, atol=1e-3)
 
 
-def test_empty_when_no_zones(monkeypatch):
-    _patch(monkeypatch, [], {})
-    out = sstrc7.query_by_min_max(0.0, 2.0, -1.0, 1.0)
+def test_empty_region_returns_an_empty_typed_array(catalog):
+    out = wrapper.query_by_min_max(
+        np.radians(0.0), np.radians(0.001), np.radians(85.0), np.radians(86.0), str(catalog)
+    )
     assert out.dtype == _STAR_DTYPE
     assert out.shape == (0,)
 
 
-# ---------------------------------------------------------------------------
-# byte-bounded zone cache
-# ---------------------------------------------------------------------------
+def test_clip_min_max_flag_is_accepted(catalog):
+    """Kept in the signature for compatibility; clipping is always exact."""
+    args = (np.radians(0.0), np.radians(10.0), np.radians(-4.0), np.radians(4.0), str(catalog))
+    assert wrapper.query_by_min_max(*args, clip_min_max=False).shape == (
+        wrapper.query_by_min_max(*args, clip_min_max=True).shape
+    )
 
 
-def _arr(n):
-    return np.zeros(n, dtype=_STAR_DTYPE)  # n stars = n*24 bytes
+def test_query_by_los_returns_three_aligned_arrays(catalog):
+    rows, cols, mv = wrapper.query_by_los(
+        512, 512, 20.0, 20.0, 100.0, 10.0, rootPath=str(catalog), pad_mult=1.0
+    )
+    assert rows.shape == cols.shape == mv.shape
+    assert rows.size > 0
+    assert np.all(np.isfinite(rows)) and np.all(np.isfinite(cols))
 
 
-def test_bytes_cache_hit_and_miss():
-    calls = []
-
-    def load(z):
-        calls.append(z)
-        return _arr(10)
-
-    cache = _BytesBoundedCache(load, max_bytes=10_000)
-    cache(0)
-    cache(0)  # served from cache
-    cache(1)
-    assert calls == [0, 1]
-    info = cache.cache_info()
-    assert info.hits == 1 and info.misses == 2 and info.currsize == 2
-    assert info.currbytes == 2 * _arr(10).nbytes
+def test_query_by_los_centres_the_boresight(catalog):
+    rows, cols, _ = wrapper.query_by_los(
+        512, 512, 20.0, 20.0, 100.0, 0.0, rootPath=str(catalog), pad_mult=0.0
+    )
+    # origin="center" shifts pixel coordinates so the boresight sits at h/2.
+    assert rows.min() < 256 < rows.max()
+    assert cols.min() < 256 < cols.max()
 
 
-def test_bytes_cache_evicts_over_budget():
-    # Each zone is 100 stars = 2400 bytes; cap at 5000 -> holds 2 at a time.
-    cap = 5000
-    cache = _BytesBoundedCache(lambda z: _arr(100), max_bytes=cap)
-    for z in range(5):
-        cache(z)
-        assert cache.cache_info().currbytes <= cap
-    info = cache.cache_info()
-    assert info.currsize == 2  # 2 * 2400 = 4800 <= 5000 < 7200
+def test_query_by_los_rotation_moves_stars(catalog):
+    """A rotated field covers a larger RA/Dec box, so counts differ too."""
+    base = wrapper.query_by_los(512, 512, 20.0, 20.0, 100.0, 10.0, rootPath=str(catalog))
+    turned = wrapper.query_by_los(512, 512, 20.0, 20.0, 100.0, 10.0, 30.0, rootPath=str(catalog))
+    assert base[0].size and turned[0].size
+    common = min(base[0].size, turned[0].size)
+    assert not np.allclose(np.sort(base[0])[:common], np.sort(turned[0])[:common])
 
 
-def test_bytes_cache_lru_order():
-    cache = _BytesBoundedCache(lambda z: _arr(100), max_bytes=5000)  # holds 2
-    cache(0)
-    cache(1)
-    cache(0)  # touch 0 -> now 1 is LRU
-    cache(2)  # evicts 1, keeps 0
-    # 0 should still be cached (a hit, no recompute); 1 evicted (a miss).
-    calls = []
-    cache2 = _BytesBoundedCache(lambda z: (calls.append(z) or _arr(100)), max_bytes=5000)
-    cache2(0)
-    cache2(1)
-    cache2(0)
-    cache2(2)
-    cache2(0)  # still resident -> no recompute
-    cache2(1)  # was evicted -> recompute
-    assert calls == [0, 1, 2, 1]
+def test_missing_catalog_raises_a_clear_error(tmp_path):
+    from sstrc7.query import CatalogNotFound
+
+    with pytest.raises(CatalogNotFound):
+        wrapper.query_by_min_max(0.0, 0.1, 0.0, 0.1, str(tmp_path / "nope"))
 
 
-def test_bytes_cache_keeps_one_when_single_zone_exceeds_cap():
-    cache = _BytesBoundedCache(lambda z: _arr(1000), max_bytes=100)  # 24000 > 100
-    out = cache(0)
-    assert out.shape == (1000,)
-    assert cache.cache_info().currsize == 1  # never evicts below 1
-
-
-def test_bytes_cache_clear():
-    cache = _BytesBoundedCache(lambda z: _arr(10), max_bytes=10_000)
-    cache(0)
-    cache.cache_clear()
-    info = cache.cache_info()
-    assert info.currsize == 0 and info.currbytes == 0 and info.hits == 0
+def test_path_resolution_prefers_the_environment(catalog, monkeypatch):
+    monkeypatch.setenv("SDASIM_SSTRC7_PATH", str(catalog))
+    out = wrapper.query_by_min_max(
+        np.radians(0.0), np.radians(10.0), np.radians(-4.0), np.radians(4.0)
+    )
+    assert out.shape[0] == 25
