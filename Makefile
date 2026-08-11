@@ -9,9 +9,8 @@ endif
 PACKAGE      := sdasim
 DIST_NAME    := sdasim
 VERSION      := $(shell sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml)
-# Non-conflicting extras (compat/satsim conflicts with catalogs/fits, so it is
-# installed on demand, never as part of the standard dev environment).
-EXTRAS       := --extra dev --extra catalogs --extra fits --extra calibrate
+# All extras resolve together now that satsim is no longer declared as one.
+EXTRAS       := --all-extras
 # Export variables
 EXPORT_BASE  := dist/export
 EXPORT_NAME  := $(PACKAGE)-$(VERSION)
@@ -32,7 +31,7 @@ check-uv:
 		exit 1 \
 	)
 
-sync: check-uv  ## Sync dependencies (dev + catalogs + fits + calibrate)
+sync: check-uv  ## Sync dependencies (all extras)
 	uv sync $(EXTRAS)
 
 ###################
