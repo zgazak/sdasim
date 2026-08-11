@@ -110,6 +110,7 @@ class TestTLEChecksum:
 class TestPropagate:
     def test_reasonable_ra_dec(self):
         """Propagation should produce valid RA/Dec values."""
+        pytest.importorskip("satkit")
         ra, dec, ra_rate, dec_rate, range_m = propagate(
             ISS_TLE_L1, ISS_TLE_L2, OBS_TIME, SITE,
         )
@@ -122,6 +123,7 @@ class TestPropagate:
 
     def test_rates_nonzero(self):
         """ISS should have non-negligible angular rates."""
+        pytest.importorskip("satkit")
         _, _, ra_rate, dec_rate, _ = propagate(
             ISS_TLE_L1, ISS_TLE_L2, OBS_TIME, SITE,
         )
@@ -211,6 +213,7 @@ class TestObserverVelocity:
 class TestDither:
     def test_dither_changes_position(self):
         """Dithered TLE should produce a different position."""
+        pytest.importorskip("satkit")
         ra_orig, dec_orig, _, _, _ = propagate(
             ISS_TLE_L1, ISS_TLE_L2, OBS_TIME, SITE,
         )
