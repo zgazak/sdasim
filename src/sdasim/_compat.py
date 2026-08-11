@@ -3,6 +3,10 @@
 Maps satsim config dicts to sdasim SceneConfig. If the satsim config uses
 $sample/$ref/$generator, calls satsim.config.loading.realize() first
 (requires satsim installed). For flat configs, no satsim dependency needed.
+
+satsim is deliberately not declared as an extra: it pins astropy<6, which
+cannot coexist with the catalogs/fits/calibrate extras. Install it yourself
+if you need dynamic-config conversion.
 """
 
 from __future__ import annotations
@@ -65,7 +69,10 @@ def from_satsim_config(satsim_dict: dict, seed: int | None = None) -> SceneConfi
         except ImportError:
             raise ImportError(
                 "satsim config contains dynamic keys ($sample/$ref/$generator) "
-                "but satsim is not installed. Install it or use a flat config."
+                "but satsim is not installed. Run `pip install satsim` in a "
+                "separate environment, or use a flat config. satsim is not an "
+                "sdasim extra: it pins astropy<6, which cannot coexist with the "
+                "catalogs/fits/calibrate extras."
             )
         cfg = realize(cfg, seed=seed)
 

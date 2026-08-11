@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "sdasim"
-version = "0.3.0"
+version = "0.4.0"
 description = "Speed-optimized differentiable satellite scene simulator"
 readme = "README.md"
 license = "MIT"
@@ -38,7 +38,6 @@ dependencies = [
 
 [project.optional-dependencies]
 catalogs = ["astropy>=6.0", "sstrc7>=1.0"]
-compat = ["satsim"]
 fits = ["astropy>=6.0"]
 calibrate = ["astropy>=6.0", "scipy>=1.10", "matplotlib>=3.5"]
 # TLE-based orbital scene mode (objects/site/tracking). Imports are lazy,
@@ -63,7 +62,7 @@ Issues = "https://github.com/zgazak/sdasim/issues"
 packages = ["src/sdasim"]
 
 # Explicit sdist contents so packaging never depends on gitignore semantics
-# (keeps local/editor state like .claude/ and CLAUDE.md out of the tarball).
+# (keeps local/editor state like .claude/ out of the tarball).
 [tool.hatch.build.targets.sdist]
 include = [
     "src/sdasim",
@@ -71,6 +70,7 @@ include = [
     "examples",
     "docs",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE",
     "Makefile",
 ]
@@ -81,24 +81,6 @@ target-version = "py310"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I"]
-
-[tool.uv]
-# satsim (the optional `compat` converter dep) pins old numpy/astropy, which
-# conflicts with every astropy-based extra. Keep it isolated in its own group.
-conflicts = [
-    [
-        { extra = "compat" },
-        { extra = "catalogs" },
-    ],
-    [
-        { extra = "compat" },
-        { extra = "fits" },
-    ],
-    [
-        { extra = "compat" },
-        { extra = "calibrate" },
-    ],
-]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

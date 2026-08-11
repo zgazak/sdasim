@@ -19,6 +19,7 @@ sstrc7 = pytest.importorskip("sstrc7", reason="needs the sstrc7 package")
 pytest.importorskip("astropy", reason="query_by_los needs astropy")
 
 from sstrc7._format import (  # noqa: E402
+    BAND_INDEX,
     INDEX_FILENAME,
     MAG_ABSENT,
     MAS_PER_DEG,
@@ -27,7 +28,6 @@ from sstrc7._format import (  # noqa: E402
     RECORD_DTYPE,
     ZONE_HEIGHT_DEG,
     ZONE_WIDTH_DEG,
-    BAND_INDEX,
     zone_filename,
 )
 
