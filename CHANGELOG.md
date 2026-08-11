@@ -9,6 +9,8 @@ This file starts after 0.3.0. Earlier history was not tracked here — see the
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-08-11
+
 ### Added
 
 - **Continuous integration** (`.github/workflows/ci.yml`) — lint, tests on
@@ -39,6 +41,11 @@ This file starts after 0.3.0. Earlier history was not tracked here — see the
   together: the `[tool.uv] conflicts` block is gone and `make sync` / `make
   test` now use `--all-extras` (which additionally picks up `orbital`, so the
   satkit-dependent orbit tests run rather than skip).
+
+- The MIT license copyright holder is now "sdasim maintainers" rather than an
+  individual.
+- `CLAUDE.md` is no longer tracked; it is local editor state and is now
+  gitignored. It was already excluded from the sdist.
 
 ### Fixed
 

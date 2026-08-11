@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "sdasim"
-version = "0.3.0"
+version = "0.4.0"
 description = "Speed-optimized differentiable satellite scene simulator"
 readme = "README.md"
 license = "MIT"
@@ -62,7 +62,7 @@ Issues = "https://github.com/zgazak/sdasim/issues"
 packages = ["src/sdasim"]
 
 # Explicit sdist contents so packaging never depends on gitignore semantics
-# (keeps local/editor state like .claude/ and CLAUDE.md out of the tarball).
+# (keeps local/editor state like .claude/ out of the tarball).
 [tool.hatch.build.targets.sdist]
 include = [
     "src/sdasim",
