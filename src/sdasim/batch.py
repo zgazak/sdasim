@@ -317,12 +317,13 @@ def render_scene_batch(scenes: Sequence[Scene]) -> BatchRenderResult:
         device=device,
     ).view(B, 1, 1)
 
-    signal = signal + bg + dc + bias
+    signal = signal + bg + dc
 
     enable_shot = all(s.config.enable_shot_noise for s in scenes)
     enable_read = all(s.config.enable_read_noise for s in scenes)
     if enable_shot:
         signal = poisson_noise(signal)
+    signal = signal + bias
     if enable_read:
         rn_sigma = torch.tensor(
             [math.sqrt(c["read_noise"] ** 2 + c["electronic_noise"] ** 2) for c in caches],

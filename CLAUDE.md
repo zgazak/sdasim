@@ -51,6 +51,12 @@ src/sdasim/
    Commanded focus is the `defocus_um` render override, differentiable end-to-end.
    Zero cost when in focus or disabled. See optics.py's docstring for the physics.
 
+3c. **Calibration frames**: `render(frame_type="dark"|"bias"|"flat")` drops sources/sky
+   and keeps only what the shutter admits (dark: dark current+bias; bias: zero-second
+   convention, no dark current; flat: uniform `sensor.flat_radiance`×exposure lamp).
+   `sdasim.FRAME_TYPES` is the bridge feature-detect hook. Bias is an electronic
+   offset — added after shot noise, never Poisson-drawn.
+
 4. **Differentiable through everything**: Positions, intensities, sigma all have gradients.
    Poisson noise uses STE, Gaussian noise uses reparameterization trick.
    A/D `torch.floor` breaks gradients — use pre-A/D signal for training losses.

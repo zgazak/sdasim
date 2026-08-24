@@ -31,6 +31,7 @@ class SensorConfig:
     bias: float = 50.0
     gain: float = 8.0
     fwc: float = 100000.0
+    flat_radiance: float = 0.0
     a2d_bias: float = 500.0
     a2d_dtype: str = "uint16"
     # --- empirical (opt-in) rendering; defaults preserve the Gaussian/basic path ---

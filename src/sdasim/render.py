@@ -326,11 +326,13 @@ def render_frame(
     signal = star_signal + target_signal
 
     # Add background, dark current, bias (per pixel, uniform)
-    signal = signal + background_pe + dark_current_pe + bias_pe
+    signal = signal + background_pe + dark_current_pe
 
     # Shot noise (Poisson)
     if enable_shot_noise:
         signal = poisson_noise(signal)
+
+    signal = signal + bias_pe
 
     # When defer_read_noise is True, return analog signal before read noise
     # and A/D so the caller can apply them after binning (CCD mode).

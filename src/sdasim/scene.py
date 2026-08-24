@@ -29,6 +29,8 @@ from sdasim.render import motion_sampling_spacing, render_frame, resolve_tempora
 from sdasim.stars import generate_random_stars
 from sdasim.targets import compute_target_positions
 
+FRAME_TYPES = ("light", "dark", "bias", "flat")
+
 
 def _apply_star_offset(
     positions: Tensor,
@@ -559,11 +561,39 @@ class Scene:
             isinstance(defocus_um, (int, float)) and defocus_um == 0.0
         ):
             raise ValueError("defocus_um override requires optics.enabled in the scene config")
+
+        # Calibration frames: dark = bias + dark current; bias = zero-second
+        # dark (no dark current regardless of commanded exposure); flat =
+        # uniform lamp illumination instead of sky. All suppress stars/targets.
+        frame_type = overrides.get("frame_type", "light")
+        if frame_type not in FRAME_TYPES:
+            raise ValueError(f"frame_type must be one of {FRAME_TYPES}, got {frame_type!r}")
+        if frame_type != "light":
+            if sensor.psf_model == "empirical" or sensor.noise_model == "empirical":
+                raise ValueError(
+                    "frame_type != 'light' requires psf_model='gaussian' and "
+                    "noise_model='basic' — the empirical noise model is a holistic "
+                    "fit and cannot separate bias/dark/sky components"
+                )
+            if frame_type == "flat" and not sensor.flat_radiance > 0:
+                raise ValueError(
+                    "frame_type='flat' requires sensor.flat_radiance (pe/pixel/s) > 0"
+                )
+
         star_positions = overrides.get("star_positions", self.star_positions)
         star_intensities = overrides.get("star_intensities", self.star_intensities)
         target_positions = overrides.get("target_positions", tgt_pos)
         target_intensities = overrides.get("target_intensities", tgt_int)
         target_velocities = overrides.get("target_velocities", tgt_vel)
+
+        # Shutter closed / lamp on: no sources. Empty slices keep device/dtype,
+        # and the motion/osf machinery below already tolerates zero sources.
+        if frame_type != "light":
+            star_positions = star_positions[:0]
+            star_intensities = star_intensities[:0]
+            target_positions = target_positions[:0]
+            target_intensities = target_intensities[:0]
+            target_velocities = target_velocities[:0]
 
         # Sky-backed star fields (sstrc7) track the commanded pointing per frame.
         # When point_ra/point_dec are supplied (and the caller hasn't overridden the
@@ -573,7 +603,8 @@ class Scene:
         # is a WCS transform, not a disk read. Other modes (random `bins`) aren't
         # sky-backed, so pointing overrides leave their field unchanged.
         if (
-            self._star_mode == "sstrc7"
+            frame_type == "light"
+            and self._star_mode == "sstrc7"
             and "star_positions" not in overrides
             and "star_intensities" not in overrides
             and ("point_ra" in overrides or "point_dec" in overrides)
@@ -595,7 +626,7 @@ class Scene:
             mount_translation = self._mount_star_translation(**overrides)
 
         # --- Catalog discovery: append auto-found field satellites as line targets ---
-        if self._catalog is not None:
+        if self._catalog is not None and frame_type == "light":
             streaks = self._discover_for_frame(frame_start, **overrides)
             if streaks:
                 extra_pos = torch.tensor(
@@ -801,6 +832,17 @@ class Scene:
                 generator=self._gen,
             )
         else:
+            # Component budget per frame type: only what the shutter/illumination
+            # admits (light keeps everything; flat swaps sky for the lamp).
+            background_pe = self.background_pe
+            dark_current_pe = self.dark_current_pe
+            if frame_type == "dark":
+                background_pe = 0.0
+            elif frame_type == "bias":
+                background_pe = 0.0
+                dark_current_pe = 0.0
+            elif frame_type == "flat":
+                background_pe = sensor.flat_radiance * sensor.exposure
             digital, star_signal, target_signal = render_frame(
                 height=sensor.height,
                 width=sensor.width,
@@ -809,8 +851,8 @@ class Scene:
                 target_positions=target_positions,
                 target_intensities=target_intensities,
                 psf_sigma=psf_sigma,
-                background_pe=self.background_pe,
-                dark_current_pe=self.dark_current_pe,
+                background_pe=background_pe,
+                dark_current_pe=dark_current_pe,
                 bias_pe=self.bias_pe,
                 read_noise=sensor.read_noise,
                 electronic_noise=sensor.electronic_noise,
@@ -827,7 +869,7 @@ class Scene:
                 t_osf=star_osf,
                 target_t_osf=target_osf,
                 exposure=sensor.exposure,
-                optics=self.optics,
+                optics=self.optics if frame_type == "light" else None,
                 defocus_um=defocus_um,
             )
 
@@ -843,6 +885,7 @@ class Scene:
             "frame_idx": frame_idx,
             "frame_time": frame_start,
             "frame_mode": frame_mode,
+            "frame_type": str(frame_type),
             "num_stars": star_positions.shape[0],
             "num_targets": target_positions.shape[0] if target_positions is not None else 0,
             "target_positions": target_positions.detach().cpu().tolist(),
