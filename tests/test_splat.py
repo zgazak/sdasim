@@ -135,3 +135,42 @@ class TestSplatGaussians:
         intensities = torch.rand(50) * 1000 + 1
         img = splat_gaussians(32, 32, pos, intensities, sigma=1.5)
         assert (img >= 0).all()
+
+
+class TestChunkedSplat:
+    """The chunked path (memory guard for huge expanded source counts) must be
+    numerically identical to the single-chunk path and keep gradients."""
+
+    def test_chunked_matches_unchunked(self, monkeypatch):
+        import sdasim.splat as sp
+
+        g = torch.Generator().manual_seed(0)
+        pos = torch.rand((500, 2), generator=g) * 64
+        ints = torch.rand((500,), generator=g) * 1000
+        ref = splat_gaussians(64, 64, pos, ints, sigma=1.5, radius=5)
+        monkeypatch.setattr(sp, "_CHUNK_ELEMS", 121 * 7)  # force ~7-source chunks
+        out = splat_gaussians(64, 64, pos, ints, sigma=1.5, radius=5)
+        assert torch.allclose(out, ref, rtol=1e-5, atol=1e-3)
+
+    def test_chunked_keeps_gradients(self, monkeypatch):
+        import sdasim.splat as sp
+
+        monkeypatch.setattr(sp, "_CHUNK_ELEMS", 121 * 3)
+        pos = (torch.rand(20, 2) * 60).requires_grad_(True)
+        ints = torch.full((20,), 100.0, requires_grad=True)
+        img = splat_gaussians(64, 64, pos, ints, sigma=1.5, radius=5)
+        (img**2).sum().backward()
+        assert pos.grad is not None and torch.isfinite(pos.grad).all()
+        assert ints.grad is not None and torch.isfinite(ints.grad).all()
+
+    def test_per_source_sigma_chunked(self, monkeypatch):
+        import sdasim.splat as sp
+
+        g = torch.Generator().manual_seed(1)
+        pos = torch.rand((100, 2), generator=g) * 64
+        ints = torch.ones(100) * 500
+        sig = 0.8 + torch.rand((100,), generator=g)
+        ref = splat_gaussians(64, 64, pos, ints, sig, radius=6)
+        monkeypatch.setattr(sp, "_CHUNK_ELEMS", 169 * 9)
+        out = splat_gaussians(64, 64, pos, ints, sig, radius=6)
+        assert torch.allclose(out, ref, rtol=1e-5, atol=1e-3)

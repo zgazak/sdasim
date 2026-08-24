@@ -45,6 +45,10 @@ def _build_fits_header(meta: dict, frame_index: int) -> dict:
     obs_dt = base_time + timedelta(seconds=frame_time)
     header["DATE-OBS"] = (obs_dt.strftime("%Y-%m-%dT%H:%M:%S.%f"), "UTC observation start")
 
+    # Frame type (light/dark/bias/flat)
+    if meta.get("frame_type"):
+        header["IMAGETYP"] = (str(meta["frame_type"]), "frame type (light/dark/bias/flat)")
+
     # Sensor / detector parameters
     if "gain" in meta:
         header["GAIN"] = (float(meta["gain"]), "[e-/DN] detector gain")

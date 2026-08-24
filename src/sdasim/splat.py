@@ -25,6 +25,11 @@ from __future__ import annotations
 import torch
 from torch import Tensor
 
+# Scratch-tensor element budget per splat chunk (~64 MB float32 at 16.7M
+# elements, plus index tensors). Bounds peak memory for arbitrarily large
+# sub-source counts; small renders stay single-chunk and unchanged.
+_CHUNK_ELEMS = 16_777_216
+
 
 def splat_gaussians(
     height: int,
@@ -73,6 +78,27 @@ def splat_gaussians(
     # Build local pixel grid offsets: (2R+1,)
     offsets = torch.arange(-radius, radius + 1, dtype=dtype, device=device)  # (K,)
     K = offsets.shape[0]
+
+    # Peak-memory guard: the scratch tensors below are (N, K, K) — with the
+    # motion/defocus sub-source expansions N can reach tens of millions, which
+    # would demand tens of GB in one shot. Process sources in chunks that keep
+    # scratch bounded (~64 MB float32 + index tensors per chunk); a single
+    # chunk (the common case) is the exact original code path.
+    chunk = max(1, _CHUNK_ELEMS // (K * K))
+    if N > chunk:
+        image = torch.zeros(height * width, dtype=dtype, device=device)
+        for start in range(0, N, chunk):
+            end = min(start + chunk, N)
+            part = splat_gaussians(
+                height,
+                width,
+                positions[start:end],
+                intensities[start:end],
+                sigma[start:end],
+                radius,
+            )
+            image = image + part.reshape(-1)
+        return image.reshape(height, width)
 
     # Source positions
     row_center = positions[:, 0].unsqueeze(1)  # (N, 1)

@@ -194,6 +194,48 @@ class TestMountRate:
         assert mr == pytest.approx(math.radians(0.05))
 
 
+class TestStarStreakingWithoutCatalog:
+    """Star streaking follows the mount rate whether or not the satellite
+    catalog is enabled -- the two are unrelated concerns."""
+
+    def _scene(self, **scene_kw):
+        from sdasim.scene import Scene
+
+        cfg = SceneConfig(
+            sensor=SensorConfig(height=64, width=64, y_fov=1.0, x_fov=1.0),
+            stars=StarFieldConfig(mode="bins", ra=180.0, dec=0.0),
+            star_motion=StarMotionConfig(temporal_osf=10),
+            seed=42,
+            **scene_kw,
+        )
+        return Scene(cfg)  # no catalog section -> catalog disabled
+
+    def test_mount_rate_streaks_stars(self):
+        scene = self._scene()
+        assert scene._catalog is None
+        _, _, _, meta = scene.render_signals(0, mount_ra_rate=0.004166, mount_dec_rate=0.0)
+        # ~15 arcsec/s at dec 0 over 56.25 arcsec/px -> ~0.27 px/s, opposite the mount
+        assert meta["star_velocity"][1] == pytest.approx(-0.2666, rel=1e-2)
+
+    def test_sidereal_mount_leaves_stars_static(self):
+        scene = self._scene()
+        _, _, _, meta = scene.render_signals(0, mount_ra_rate=0.0, mount_dec_rate=0.0)
+        assert meta["star_velocity"] == pytest.approx([0.0, 0.0], abs=1e-9)
+
+    def test_config_mount_rate_also_streaks(self):
+        scene = self._scene(mount_ra_rate=0.004166)
+        _, _, _, meta = scene.render_signals(0)
+        assert meta["star_velocity"][1] == pytest.approx(-0.2666, rel=1e-2)
+
+    def test_configured_translation_still_wins_without_mount_rate(self):
+        """No commanded mount rate -> the legacy/orbital star_motion path stands."""
+        scene = self._scene()
+        scene.config.star_motion.translation = [1.5, -2.5]  # what orbital mode precomputes
+        scene._object_states = ["primary"]  # orbital mode marker
+        _, _, _, meta = scene.render_signals(0)
+        assert meta["star_velocity"] == [1.5, -2.5]
+
+
 # ---------------------------------------------------------------------------
 # Scene integration
 # ---------------------------------------------------------------------------

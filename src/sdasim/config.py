@@ -31,6 +31,7 @@ class SensorConfig:
     bias: float = 50.0
     gain: float = 8.0
     fwc: float = 100000.0
+    flat_radiance: float = 0.0
     a2d_bias: float = 500.0
     a2d_dtype: str = "uint16"
     # --- empirical (opt-in) rendering; defaults preserve the Gaussian/basic path ---
@@ -90,7 +91,13 @@ class StarFieldConfig:
 class StarMotionConfig:
     rotation: float = 0.0
     translation: list[float] = field(default_factory=lambda: [0.0, 0.0])
-    temporal_osf: int = 100
+    # Motion-blur sub-sampling for STARS: how many stationary sub-sources a
+    # moving star becomes. None (default) = auto — sdasim derives it per frame
+    # from the streak length so sub-source spacing keeps sampling artifacts
+    # below the frame's own noise floor (see render.motion_sampling_spacing).
+    # An explicit int pins the value verbatim (byte-reproducible renders,
+    # sigma-differentiable training).
+    temporal_osf: int | None = None
 
 
 @dataclass
@@ -137,6 +144,71 @@ class CatalogConfig:
 
 
 @dataclass
+class AberrationsConfig:
+    """Static wavefront aberrations in waves RMS (Noll-normalized Zernikes).
+
+    These are the numbers an interferometer or a Zemax "Zernike Standard"
+    analysis reports (RMS-normalized circular-pupil coefficients — NOT Fringe
+    Zernikes). Applied once per Scene; commanded per-frame defocus rides on
+    top via the ``defocus_um`` render override.
+    """
+
+    defocus: float = 0.0  # Z4: residual best-focus error
+    astig_0: float = 0.0  # Z6: elongates along rows/cols; axis flips across focus
+    astig_45: float = 0.0  # Z5: same, along the diagonals
+    coma_x: float = 0.0  # Z8: comatic flare along columns
+    coma_y: float = 0.0  # Z7: comatic flare along rows
+    spherical: float = 0.0  # Z11: makes intra/extra donut profiles differ
+    # Extra defocus (waves RMS) at the field CORNER, growing quadratically with
+    # boresight-relative field radius — field curvature / focal-plane bow.
+    field_curvature: float = 0.0
+    # Field-linear coma: waves RMS at the field CORNER, oriented radially and
+    # growing linearly with field radius — the classic "comatic corners"
+    # pattern (clean core on-axis, outward-pointing tails at the edges).
+    # Positive values point the tails away from the boresight. Distinct from
+    # coma_x/coma_y, which are field-CONSTANT (decenter/tilt miscollimation:
+    # every star gets the same tail).
+    coma_radial: float = 0.0
+    # Field-quadratic astigmatism: waves RMS at the field CORNER, growing as
+    # field radius squared with the doubled-angle orientation rule (the astig
+    # axis tracks the field azimuth: corner stars elongate radially on one side
+    # of focus, tangentially on the other). This is the intrinsic off-axis
+    # astigmatism every telescope has when aligned — the dominant field
+    # aberration of RC-style designs. Combined with the field-CONSTANT
+    # astig_0/astig_45 (miscollimation), it produces binodal astigmatism: two
+    # off-center points of zero astigmatism.
+    astig_radial: float = 0.0
+
+
+@dataclass
+class OpticsConfig:
+    """Pupil geometry for the geometric defocus/aberration model (optics.py).
+
+    Disabled by default; when disabled the render path is untouched. Enabling
+    with zero aberrations and ``defocus_um=0`` is also free — the model
+    collapses to the plain Gaussian PSF until something actually blurs.
+    """
+
+    enabled: bool = False
+    f_number: float = 8.0  # working f-number of the optical system
+    obscuration: float = 0.0  # secondary diameter / aperture diameter (0 = clear)
+    wavelength_nm: float = 550.0  # converts waves RMS <-> microns of wavefront
+    pixel_pitch_um: float = 9.0  # detector pixel pitch, microns
+    # --- cost ceiling for the defocus expansion --------------------------------
+    # None (default) inherits the scene-level max_render_seconds; set here only
+    # to give the optics stage its own ceiling. The budget is converted to a
+    # sub-source cap via a measured splat rate; when it binds, pupil sampling is
+    # coarsened (donuts get grainy; flux and moments stay exact) and metadata
+    # flags pupil_sampling_clamped.
+    max_render_seconds: float | None = None
+    # Explicit sub-source cap. Overrides max_render_seconds when set — use it
+    # when a run must render identically across machines, since a calibrated
+    # budget is by definition machine-dependent.
+    max_sub_sources: int | None = None
+    aberrations: AberrationsConfig = field(default_factory=AberrationsConfig)
+
+
+@dataclass
 class SceneConfig:
     sensor: SensorConfig = field(default_factory=SensorConfig)
     stars: StarFieldConfig = field(default_factory=StarFieldConfig)
@@ -146,6 +218,18 @@ class SceneConfig:
     device: str = "auto"
     enable_shot_noise: bool = True
     enable_read_noise: bool = True
+    # Wall-clock ceiling for sub-source work (motion expansion + defocus pupil
+    # expansion combined). Converted to a sub-source cap via a splat-throughput
+    # measurement on this machine at Scene construction. Motion sampling is
+    # served first (beading is more visible than donut graininess); the defocus
+    # stage then divides the same pool by the already-expanded source count.
+    # Degradations are flagged in render metadata.
+    max_render_seconds: float = 0.5
+    # Sub-source spacing pin, in units of psf_sigma. None (default) = auto:
+    # derived per frame from the brightest source vs the frame's noise floor so
+    # sampling ripple stays statistically invisible. Set a float (e.g. 1.5) to
+    # pin the spacing for reproducibility across scenes/frames.
+    sampling_quality: float | None = None
     mode: str | None = None
     sidereal_start: int | None = None
     obs_time: str | None = None  # ISO start time, e.g. "2024-01-01T00:00:00"
@@ -157,6 +241,8 @@ class SceneConfig:
     catalog: CatalogConfig = field(default_factory=CatalogConfig)
     mount_ra_rate: float = 0.0   # deg/s, inertial; 0.0 == sidereal track
     mount_dec_rate: float = 0.0  # deg/s
+    # --- geometric defocus/aberration model (additions) ---
+    optics: OpticsConfig = field(default_factory=OpticsConfig)
 
 
 _NESTED_TYPES: dict[str, type] = {}
@@ -174,6 +260,8 @@ def _init_nested_types() -> None:
                 "SiteConfig": SiteConfig,
                 "ObjectConfig": ObjectConfig,
                 "CatalogConfig": CatalogConfig,
+                "OpticsConfig": OpticsConfig,
+                "AberrationsConfig": AberrationsConfig,
             }
         )
 
@@ -185,6 +273,8 @@ _FIELD_TYPE_MAP: dict[str, type] = {
     "star_motion": StarMotionConfig,
     "site": SiteConfig,
     "catalog": CatalogConfig,
+    "optics": OpticsConfig,
+    "aberrations": AberrationsConfig,
 }
 
 

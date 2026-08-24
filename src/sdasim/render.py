@@ -7,6 +7,7 @@ Pipeline: splat stars -> splat targets -> add background/DC/bias ->
 from __future__ import annotations
 
 import math
+from typing import TYPE_CHECKING
 
 import torch
 from torch import Tensor
@@ -14,6 +15,74 @@ from torch import Tensor
 from sdasim.fpa import analog_to_digital
 from sdasim.noise import gaussian_noise, poisson_noise
 from sdasim.splat import splat_gaussians
+
+if TYPE_CHECKING:
+    from sdasim.optics import OpticsModel
+
+
+def motion_sampling_spacing(
+    sigma: float,
+    peak_pe: float,
+    noise_pe: float,
+    quality: float | None = None,
+) -> float:
+    """Largest sub-source spacing (px) whose sampling ripple hides in the noise.
+
+    A chain of Gaussians (sigma s) spaced d apart carries a periodic brightness
+    ripple of semi-amplitude a = 2*exp(-2*pi^2*s^2/d^2) (exact, by Poisson
+    summation). Rather than fix d/s at a universal constant, derive the ripple
+    each frame can actually afford: on the brightest streak, surface brightness
+    peak_pe rides on per-pixel noise noise_pe, so ripple below ~half the noise
+    is statistically invisible. Inverting the ripple law for that amplitude
+    gives the spacing. Bright star on dark sky -> tighter sampling; faint
+    streaks on bright sky -> coarser, for free.
+
+    quality pins d = quality*sigma instead (reproducibility across scenes).
+    The result is clamped to [1.3, 2.2]*sigma — the exponential makes margin
+    cheap below and unacceptable above — and floored at 1 px, below which the
+    pixel lattice itself dominates and finer sampling buys nothing.
+    """
+    if quality is None:
+        a = min(0.5 * noise_pe / max(peak_pe, 1e-9), 0.1)
+        q = math.pi * math.sqrt(2.0 / math.log(2.0 / a))
+        quality = min(max(q, 1.3), 2.2)
+    return max(quality * sigma, 1.0)
+
+
+def resolve_temporal_osf(
+    configured: int | None,
+    velocity,
+    rotation: float,
+    exposure: float,
+    spacing_px: float,
+    r_max_px: float,
+    n_sources: int,
+    budget_sub_sources: int | None,
+) -> tuple[int, bool]:
+    """Resolve the star motion-blur sub-sampling for this frame.
+
+    Returns (t_osf, clamped). An explicitly configured int wins verbatim.
+    Auto: enough sub-sources that spacing along the longest streak stays at
+    spacing_px. The streak bound folds in rotation via the farthest source
+    (r_max_px from the rotation center): |v| + |omega|*r_max. Floored at 2
+    whenever there is any motion — expand_motion places sub-sources at
+    sub-interval midpoints, so t_osf=1 would shift a moving star's centroid
+    from mid-exposure to exposure start (a half-streak astrometric jump).
+    Capped by the sub-source budget (beading is preferred to an unbounded
+    LEO-rate allocation), with clamped=True when the cap bites.
+    """
+    if configured is not None:
+        return max(1, int(configured)), False
+    v0, v1 = (float(velocity[0]), float(velocity[1])) if velocity is not None else (0.0, 0.0)
+    speed = math.hypot(v0, v1) + abs(rotation) * r_max_px
+    streak_px = speed * exposure
+    if streak_px <= 1e-9:
+        return 1, False
+    want = max(2, math.ceil(streak_px / spacing_px))
+    if budget_sub_sources is None or n_sources <= 0:
+        return want, False
+    cap = max(2, budget_sub_sources // n_sources)
+    return min(want, cap), want > cap
 
 
 def expand_motion(
@@ -127,6 +196,8 @@ def render_frame(
     t_osf: int = 1,
     target_t_osf: int | None = None,
     exposure: float = 1.0,
+    optics: "OpticsModel | None" = None,
+    defocus_um: float | Tensor = 0.0,
 ) -> tuple[Tensor, Tensor, Tensor]:
     """Render a single frame through the full pipeline.
 
@@ -153,6 +224,10 @@ def render_frame(
         target_velocities: (T, 2) per-target velocities in pixels/sec, or None.
         t_osf: Temporal oversampling factor for motion blur.
         exposure: Exposure time in seconds.
+        optics: Optional OpticsModel; expands stars and targets into defocused
+            sub-sources (composes with motion expansion).
+        defocus_um: Commanded focal shift from best focus in microns (may be a
+            scalar tensor to keep gradients to the focus command).
 
     Returns:
         (digital, star_signal, target_signal): Digital image, star-only PE, target-only PE.
@@ -185,16 +260,36 @@ def render_frame(
     else:
         exp_pos, exp_int = star_positions, star_intensities
 
+    # Defocus/aberration expansion composes with motion expansion (pupil x time).
+    star_optics_stats = None
+    if optics is not None:
+        exp_pos, exp_int = optics.expand(exp_pos, exp_int, defocus_um, center, psf_sigma=psf_sigma)
+        if star_positions.shape[0] > 0:
+            # Stars are the dominant population; snapshot their expansion stats
+            # so the (often empty) target expansion below can't mask them in
+            # the frame metadata (e.g. report clamped=False after the stars
+            # were budget-clamped).
+            star_optics_stats = (optics.last_k, optics.last_blur_px, optics.last_clamped)
+
     star_signal = splat_gaussians(height, width, exp_pos, exp_int, psf_sigma)
 
     # --- Targets: per-target within-frame motion blur ---
-    # Use target_t_osf if provided, otherwise auto-compute from velocity.
+    # Use target_t_osf if provided (Scene resolves it against the noise floor
+    # and budget), otherwise fall back to the same spacing rule with a plain
+    # sigma-relative spacing. Speed is the max VECTOR-NORM velocity (the old
+    # per-axis abs().max() under-read diagonal streaks by up to sqrt(2)).
     tgt_osf = target_t_osf
     if tgt_osf is None and target_velocities is not None and target_positions.shape[0] > 0:
-        # Auto: ~1 sub-step per pixel of max target motion during exposure
-        max_speed = target_velocities.abs().max().item()
-        streak_px = max_speed * exposure
-        tgt_osf = max(1, int(streak_px * 2))  # 2 sub-steps per pixel for quality
+        max_speed = float(target_velocities.norm(dim=1).max().item())
+        sigma_val = (
+            float(psf_sigma.detach().reshape(()).max().item())
+            if isinstance(psf_sigma, Tensor)
+            else float(psf_sigma)
+        )
+        tgt_osf, _ = resolve_temporal_osf(
+            None, [max_speed, 0.0], 0.0, exposure,
+            max(1.5 * sigma_val, 1.0), 0.0, target_positions.shape[0], None,
+        )
 
     if (
         target_velocities is not None
@@ -213,25 +308,31 @@ def render_frame(
             tgt_osf,
             center,
         )
-        target_signal = splat_gaussians(height, width, tgt_exp_pos, tgt_exp_int, psf_sigma)
     else:
-        target_signal = splat_gaussians(
-            height,
-            width,
-            target_positions,
-            target_intensities,
-            psf_sigma,
+        tgt_exp_pos, tgt_exp_int = target_positions, target_intensities
+
+    if optics is not None:
+        tgt_exp_pos, tgt_exp_int = optics.expand(
+            tgt_exp_pos, tgt_exp_int, defocus_um, center, psf_sigma=psf_sigma
         )
+        if star_optics_stats is not None:
+            k, blur, clamped = star_optics_stats
+            optics.last_k, optics.last_blur_px = k, blur
+            optics.last_clamped = clamped or optics.last_clamped
+
+    target_signal = splat_gaussians(height, width, tgt_exp_pos, tgt_exp_int, psf_sigma)
 
     # Combine signal
     signal = star_signal + target_signal
 
     # Add background, dark current, bias (per pixel, uniform)
-    signal = signal + background_pe + dark_current_pe + bias_pe
+    signal = signal + background_pe + dark_current_pe
 
     # Shot noise (Poisson)
     if enable_shot_noise:
         signal = poisson_noise(signal)
+
+    signal = signal + bias_pe
 
     # When defer_read_noise is True, return analog signal before read noise
     # and A/D so the caller can apply them after binning (CCD mode).

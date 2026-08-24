@@ -26,7 +26,7 @@ from torch import Tensor
 
 from sdasim.fpa import MAX_PIXEL_VALUE
 from sdasim.noise import poisson_noise
-from sdasim.render import expand_motion
+from sdasim.render import expand_motion, motion_sampling_spacing, resolve_temporal_osf
 from sdasim.scene import Scene
 from sdasim.splat import splat_gaussians_batched
 from sdasim.targets import compute_target_positions
@@ -55,7 +55,23 @@ def _ensure_source_cache(scene: Scene) -> dict:
     sp = scene.star_positions
     si = scene.star_intensities
     has_motion = sm.rotation != 0.0 or sm.translation[0] != 0.0 or sm.translation[1] != 0.0
-    if has_motion and sm.temporal_osf > 1 and sp.shape[0] > 0:
+    # Same auto-resolution as Scene.render_signals: config int pins, None derives
+    # the sub-sampling from the streak vs this scene's noise floor and budget.
+    sigma = float(sensor.psf_sigma)
+    r_max = 0.5 * math.hypot(sensor.height, sensor.width)
+    star_osf = sm.temporal_osf
+    if star_osf is None:
+        peak_pe, noise_pe = scene._streak_photometry(
+            si, sm.translation, sm.rotation, sensor.exposure, sigma, r_max
+        )
+        spacing = motion_sampling_spacing(
+            sigma, peak_pe, noise_pe, scene.config.sampling_quality
+        )
+        star_osf, _ = resolve_temporal_osf(
+            None, sm.translation, sm.rotation, sensor.exposure, spacing, r_max,
+            sp.shape[0], scene._subsource_budget(),
+        )
+    if has_motion and star_osf > 1 and sp.shape[0] > 0:
         star_pos, star_int = expand_motion(
             sp,
             si,
@@ -63,7 +79,7 @@ def _ensure_source_cache(scene: Scene) -> dict:
             sm.rotation,
             0.0,
             sensor.exposure,
-            sm.temporal_osf,
+            star_osf,
             center,
         )
     else:
@@ -185,10 +201,11 @@ def _collect_cached(
     return positions, intensities, frame_ids, per_source_sigma
 
 
-def _render_batch_empirical(scenes: Sequence[Scene]) -> BatchRenderResult:
-    """Empirical-mode batch: each scene has its own sampled PSF kernel + per-scene FFT, so it
-    can't fuse into a single splat like the Gaussian path. Render each via the full empirical
-    pipeline (Scene.render_signals) and stack. FFTs still run on-GPU per scene."""
+def _render_batch_per_scene(scenes: Sequence[Scene]) -> BatchRenderResult:
+    """Per-scene fallback batch: render each scene via its full Scene.render_signals
+    pipeline and stack. Used for empirical scenes (per-scene sampled PSF kernel +
+    FFT can't fuse into a single splat) and optics-enabled scenes (per-source
+    pupil expansion isn't in the fused source cache)."""
     device = scenes[0].device
     digs, ss, ts, pf = [], [], [], []
     for s in scenes:
@@ -240,11 +257,16 @@ def render_scene_batch(scenes: Sequence[Scene]) -> BatchRenderResult:
                 f"got mode={s.config.mode}"
             )
 
-    # Empirical scenes use per-scene sampled kernels + FFT -> render per-scene and stack.
+    # Empirical scenes (per-scene sampled kernels + FFT) and optics-enabled
+    # scenes (per-source pupil expansion) can't use the fused source cache ->
+    # render per-scene and stack.
     if any(
-        s.sensor.psf_model == "empirical" or s.sensor.noise_model == "empirical" for s in scenes
+        s.sensor.psf_model == "empirical"
+        or s.sensor.noise_model == "empirical"
+        or s.optics is not None
+        for s in scenes
     ):
-        return _render_batch_empirical(scenes)
+        return _render_batch_per_scene(scenes)
 
     # Ensure caches exist (lazy, idempotent on pool scenes).
     for s in scenes:
@@ -295,12 +317,13 @@ def render_scene_batch(scenes: Sequence[Scene]) -> BatchRenderResult:
         device=device,
     ).view(B, 1, 1)
 
-    signal = signal + bg + dc + bias
+    signal = signal + bg + dc
 
     enable_shot = all(s.config.enable_shot_noise for s in scenes)
     enable_read = all(s.config.enable_read_noise for s in scenes)
     if enable_shot:
         signal = poisson_noise(signal)
+    signal = signal + bias
     if enable_read:
         rn_sigma = torch.tensor(
             [math.sqrt(c["read_noise"] ** 2 + c["electronic_noise"] ** 2) for c in caches],

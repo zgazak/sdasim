@@ -3,8 +3,10 @@
 from sdasim._version import __version__
 from sdasim.batch import BatchRenderResult, render_scene_batch
 from sdasim.config import (
+    AberrationsConfig,
     CatalogConfig,
     ObjectConfig,
+    OpticsConfig,
     SceneConfig,
     SensorConfig,
     SiteConfig,
@@ -21,8 +23,9 @@ from sdasim.empirical import (
 )
 from sdasim.fpa import analog_to_digital, eod_to_sigma, mv_to_pe, pe_to_mv
 from sdasim.noise import gaussian_noise, poisson_noise
+from sdasim.optics import OpticsModel, pupil_samples
 from sdasim.render import expand_motion, render_frame
-from sdasim.scene import Scene
+from sdasim.scene import FRAME_TYPES, Scene
 from sdasim.splat import (
     splat_elliptical_gaussian_batched,
     splat_gaussians,
@@ -71,15 +74,21 @@ __all__ = [
     "expand_motion",
     "render_scene_batch",
     "BatchRenderResult",
+    # Optics (opt-in)
+    "OpticsModel",
+    "pupil_samples",
     # Empirical (opt-in)
     "EmpiricalPSF",
     "EmpiricalNoise",
     "render_frame_empirical",
     # Scene
     "Scene",
+    "FRAME_TYPES",
     # Config
     "SceneConfig",
     "SensorConfig",
+    "OpticsConfig",
+    "AberrationsConfig",
     "SiteConfig",
     "ObjectConfig",
     "CatalogConfig",
