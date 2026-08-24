@@ -1,0 +1,123 @@
+# Build and publish sdasim to PyPI when a GitHub Release is published.
+#
+# Trigger:   publishing a Release (not merges to main, not draft releases,
+#            not prereleases -- see the `if:` guard on release-build).
+# Auth:      PyPI Trusted Publishing (OIDC). No API token secret is used.
+# Gate:      the `pypi` environment. Add required reviewers there so a human
+#            must approve before anything reaches PyPI.
+#
+# One-time setup required before this can succeed -- see docs/RELEASING.md.
+
+name: Upload Python Package
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pypi-publish-${{ github.event.release.tag_name }}
+  cancel-in-progress: false
+
+jobs:
+  release-build:
+    # Never publish from a draft or a prerelease. Publishing a draft flips
+    # `draft` to false before this fires, so the prerelease check is the one
+    # that does the real work; the draft check is belt-and-braces.
+    if: ${{ !github.event.release.draft && !github.event.release.prerelease }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Check out the exact commit the release tag points at, not the
+          # branch head, so we build what was actually tagged.
+          ref: ${{ github.event.release.tag_name }}
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          # Sets UV_PYTHON so `uv sync` and `uv run` agree on the interpreter.
+          python-version: "3.12"
+
+      - name: Verify release tag matches pyproject.toml version
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          PROJECT_VERSION="$(uv run --no-project python -c 'import tomllib,pathlib; print(tomllib.loads(pathlib.Path("pyproject.toml").read_text())["project"]["version"])')"
+          echo "pyproject.toml version: ${PROJECT_VERSION}"
+          echo "release tag:            ${TAG}"
+          if [ "${TAG}" != "v${PROJECT_VERSION}" ]; then
+            echo "::error::Release tag '${TAG}' does not match pyproject.toml version '${PROJECT_VERSION}' (expected tag 'v${PROJECT_VERSION}'). Bump the version or retag."
+            exit 1
+          fi
+          echo "VERSION=${PROJECT_VERSION}" >> "$GITHUB_ENV"
+
+      - name: Verify version is not already on PyPI
+        run: |
+          if curl -sf "https://pypi.org/pypi/sdasim/${VERSION}/json" > /dev/null; then
+            echo "::error::sdasim ${VERSION} is already published on PyPI. Bump the version in pyproject.toml -- PyPI will not accept a re-upload."
+            exit 1
+          fi
+          echo "PyPI check OK: ${VERSION} is not yet published"
+
+      - name: Install locked dependencies
+        # --frozen uses the committed uv.lock, so the release runs the same
+        # tool versions as CI and as `make lint` / `make test` locally.
+        run: uv sync --all-extras --frozen
+
+      - name: Lint
+        run: uv run ruff check src/ tests/
+
+      - name: Run tests
+        run: uv run pytest -v
+
+      - name: Build release distributions
+        run: uv build
+
+      - name: Verify built artifacts carry the expected version
+        run: |
+          ls -l dist/
+          test -f "dist/sdasim-${VERSION}-py3-none-any.whl" || {
+            echo "::error::Expected dist/sdasim-${VERSION}-py3-none-any.whl, got: $(ls dist/)"; exit 1; }
+          test -f "dist/sdasim-${VERSION}.tar.gz" || {
+            echo "::error::Expected dist/sdasim-${VERSION}.tar.gz, got: $(ls dist/)"; exit 1; }
+
+      - name: Check distribution metadata
+        run: uvx twine check dist/*
+
+      - name: Upload distributions
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-dists
+          path: dist/
+
+  pypi-publish:
+    runs-on: ubuntu-latest
+    needs:
+      - release-build
+
+    permissions:
+      # Mandatory for trusted publishing.
+      id-token: write
+
+    # Configure required reviewers on this environment in
+    # Settings -> Environments -> pypi. The build above runs unattended;
+    # this job waits for a human approval before uploading.
+    environment:
+      name: pypi
+      url: https://pypi.org/p/sdasim
+
+    steps:
+      - name: Retrieve release distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: release-dists
+          path: dist/
+
+      - name: Publish release distributions to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/
