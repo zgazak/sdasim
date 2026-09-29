@@ -511,8 +511,14 @@ class Scene:
             d = float(d.detach().reshape(()).item()) if isinstance(d, Tensor) else float(d)
             pad += self.optics.blur_radius_px(d)
 
+        catalog = self._catalog
+        if overrides.get("catalog_tles"):
+            from sdasim.orbits import with_tle_overrides
+
+            catalog = with_tle_overrides(catalog, overrides["catalog_tles"])
+
         return discover_streaks(
-            self._catalog, t_frame, cfg.site, sensor,
+            catalog, t_frame, cfg.site, sensor,
             point_ra, point_dec, mr_rad, md_rad,
             cat.albedo, pad,
         )
@@ -532,6 +538,8 @@ class Scene:
         Args:
             frame_idx: Frame index (affects target positions and star motion).
             **overrides: Override any render parameter (psf_sigma, target positions, etc.)
+                ``catalog_tles`` (a list of 2- or 3-line TLEs) replaces those objects'
+                catalog elements for this frame only; see ``orbits.with_tle_overrides``.
         """
         sensor = self.sensor
         sm = self.config.star_motion
