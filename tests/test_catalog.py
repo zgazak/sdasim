@@ -322,3 +322,79 @@ def test_catalog_config_yaml_nesting():
     assert cfg.catalog.enabled is True
     assert cfg.catalog.albedo == 0.3
     assert cfg.mount_ra_rate == 0.01
+
+
+# ---------------------------------------------------------------------------
+# Per-frame TLE overrides
+# ---------------------------------------------------------------------------
+
+# Same ISS, mean anomaly moved 20 deg: far out of a small field pointed at the original.
+ISS_L2_MOVED = "2 25544  51.6400 200.0000 0007417  35.0000 345.0000 15.49000000000000"
+OTHER_L1 = "1 20580U 90037B   24001.50000000  .00001000  00000-0  50000-4 0  9998"
+OTHER_L2 = "2 20580  28.4700 100.0000 0002500  90.0000 270.0000 15.09000000000000"
+
+
+class TestTleOverrides:
+    def test_replaces_same_norad_and_keeps_diameter(self):
+        from sdasim.orbits import with_tle_overrides
+
+        cat = with_tle_overrides(_iss_catalog(diameter_m=3.0), [["0 ISS", ISS_L1, ISS_L2_MOVED]])
+        assert len(cat.tles) == 1
+        assert cat.tles[0].mean_anomaly == pytest.approx(345.0)
+        assert cat.diameters.tolist() == [3.0]
+
+    def test_appends_unknown_norad(self):
+        from sdasim.orbits import with_tle_overrides
+
+        cat = with_tle_overrides(_iss_catalog(diameter_m=3.0), [[OTHER_L1, OTHER_L2]])
+        assert sorted(int(t.satnum) for t in cat.tles) == [20580, 25544]
+        assert cat.diameters.tolist() == [3.0, 3.0]
+
+    def test_drops_duplicate_catalog_entries(self):
+        from sdasim.orbits import with_tle_overrides
+
+        tle = satkit.TLE.from_lines([ISS_L1, ISS_L2])
+        dup = LoadedCatalog(tles=[tle, tle], diameters=np.array([2.0, 2.0]))
+        cat = with_tle_overrides(dup, [[ISS_L1, ISS_L2_MOVED]])
+        assert len(cat.tles) == 1
+
+    def test_no_overrides_returns_catalog(self):
+        from sdasim.orbits import with_tle_overrides
+
+        cat = _iss_catalog()
+        assert with_tle_overrides(cat, None) is cat
+
+    def test_render_override_moves_the_satellite(self, tmp_path):
+        """A catalog whose elements miss the field renders nothing; the override fixes it."""
+        from sdasim.scene import Scene
+
+        sensor = SensorConfig(height=256, width=256, y_fov=3.0, x_fov=3.0, exposure=2.0)
+        cat = _iss_catalog()
+        base = datetime(2024, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+        chosen = None
+        for k in range(0, 24 * 60, 5):
+            t = base + timedelta(minutes=k)
+            ra, dec, *_ = propagate(ISS_L1, ISS_L2, t, SITE)
+            if discover_streaks(cat, t, SITE, sensor, ra, dec, 0.0, 0.0, 0.2, 6.0):
+                chosen = (t, ra, dec)
+                break
+        assert chosen is not None
+        t, ra, dec = chosen
+
+        stale = tmp_path / "stale.3le"
+        stale.write_text(ISS_L1 + "\n" + ISS_L2_MOVED + "\n")
+        cfg = SceneConfig(
+            sensor=sensor,
+            stars=StarFieldConfig(mode="bins", ra=ra, dec=dec),
+            star_motion=StarMotionConfig(temporal_osf=50),
+            site=SITE,
+            catalog=CatalogConfig(enabled=True, source=str(stale)),
+            obs_time=t.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            seed=42,
+        )
+        scene = Scene(cfg)
+        _, meta = scene.render(0)
+        assert meta["num_targets"] == 0
+
+        _, meta = scene.render(0, catalog_tles=[[ISS_L1, ISS_L2]])
+        assert meta["num_targets"] >= 1

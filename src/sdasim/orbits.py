@@ -588,6 +588,44 @@ def load_catalog(cfg: CatalogConfig) -> LoadedCatalog:
     return _CAT_CACHE[key][1]
 
 
+def with_tle_overrides(catalog: LoadedCatalog, overrides) -> LoadedCatalog:
+    """Return ``catalog`` with some objects' elements replaced.
+
+    ``overrides`` is a sequence of TLE line lists (2 or 3 lines each). An override
+    REPLACES every catalog entry with the same NORAD id and keeps that entry's
+    diameter; an id not in the catalog is appended with the median diameter.
+    Use it when the caller holds newer elements for an object than the catalog,
+    so the object renders where the caller expects it.
+    """
+    import satkit
+
+    if not overrides:
+        return catalog
+    new = {}
+    for lines in overrides:
+        tle = satkit.TLE.from_lines(list(lines))
+        new[int(tle.satnum)] = tle
+
+    tles, diameters = [], []
+    for tle, diam in zip(catalog.tles, catalog.diameters):
+        num = int(tle.satnum)
+        if num in new:
+            if new[num] is None:
+                continue  # already replaced; drop duplicate catalog entries
+            tles.append(new[num])
+            new[num] = None
+        else:
+            tles.append(tle)
+        diameters.append(float(diam))
+
+    fallback = float(np.median(catalog.diameters)) if len(catalog.diameters) else 1.0
+    for tle in new.values():
+        if tle is not None:
+            tles.append(tle)
+            diameters.append(fallback)
+    return LoadedCatalog(tles, np.asarray(diameters, float))
+
+
 def _phase_angle_factor(phi_rad: np.ndarray) -> np.ndarray:
     """Lambertian-sphere phase factor (Tousey/Sussman); matches simple-snr-calc."""
     return (2.0 / (3.0 * np.pi**2)) * (np.sin(phi_rad) + (np.pi - phi_rad) * np.cos(phi_rad))
