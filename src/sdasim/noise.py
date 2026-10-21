@@ -9,13 +9,25 @@ from __future__ import annotations
 import torch
 from torch import Tensor
 
+# Above this rate, Poisson is sampled as round(N(lambda, sqrt(lambda))): the
+# normal approximation's skew is ~1/sqrt(lambda) (<1% here) while torch.poisson
+# gets expensive — the daytime-sky regime (sky-filled pixels at 1e4-1e7 e-)
+# is exactly where this bites.
+POISSON_GAUSSIAN_THRESHOLD = 1.0e4
+
 
 class _PoissonSTE(torch.autograd.Function):
     """Poisson sampling with straight-through estimator gradient."""
 
     @staticmethod
     def forward(ctx, signal: Tensor) -> Tensor:
-        return torch.poisson(signal.clamp(min=0.0))
+        lam = signal.clamp(min=0.0)
+        big = lam > POISSON_GAUSSIAN_THRESHOLD
+        if bool(big.any()):
+            gauss = torch.round(lam + torch.sqrt(lam) * torch.randn_like(lam)).clamp(min=0.0)
+            small = torch.poisson(torch.where(big, torch.zeros_like(lam), lam))
+            return torch.where(big, gauss, small)
+        return torch.poisson(lam)
 
     @staticmethod
     def backward(ctx, grad_output: Tensor) -> Tensor:

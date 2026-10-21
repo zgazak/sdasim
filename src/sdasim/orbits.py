@@ -604,6 +604,7 @@ def discover_streaks(
     mount_dec_rate: float,  # rad/s
     albedo: float,
     psf_pad_px: float,
+    sun_mag: float = SUN_MV,  # apparent solar mag in the sensing band (default V)
 ) -> list[StreakState]:
     """Find sunlit satellites whose streak touches the FOV at ``obs_time``.
 
@@ -697,7 +698,7 @@ def discover_streaks(
     )
     paf = _phase_angle_factor(np.arccos(np.clip(cphi, -1.0, 1.0)))
     r = catalog.diameters[idx] / 2.0
-    mv = SUN_MV - 2.5 * np.log10(
+    mv = sun_mag - 2.5 * np.log10(
         np.clip(albedo * paf * np.pi * r * r / (rng[idx] ** 2), 1e-30, None)
     )
 

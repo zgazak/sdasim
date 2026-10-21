@@ -116,6 +116,7 @@ def load_sstrc7(
     pad_mult: float = 1.0,
     mv_max: float | None = None,
     device: str | torch.device | None = None,
+    filter_center: float | None = None,
 ) -> tuple[Tensor, Tensor]:
     """Load stars from SSTRC7 catalog. Requires astropy.
 
@@ -130,6 +131,10 @@ def load_sstrc7(
         pad_mult: Padding multiplier.
         mv_max: Optional faint-end magnitude cut (drop stars fainter than this).
         device: Target device.
+        filter_center: Optional wavelength (nm) to interpolate each star's SED
+            to (SSTRC7 stores 18 bands incl. 2MASS J/H/Ks). None keeps the
+            broadband visual-priority magnitude (v1 behavior). Pair with a
+            band-matched zeropoint (bands.compute_zeropoint) for SWIR scenes.
 
     Returns:
         (positions, intensities): (M, 2) row/col, (M,) PE counts.
@@ -150,6 +155,8 @@ def load_sstrc7(
     }
     if catalog_path is not None:
         kwargs["rootPath"] = catalog_path
+    if filter_center is not None:
+        kwargs["filter_center"] = filter_center
 
     rr, cc, mv = query_by_los(**kwargs)
 

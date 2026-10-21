@@ -92,6 +92,20 @@ def _build_fits_header(meta: dict, frame_index: int) -> dict:
     if "num_targets" in meta:
         header["NTARGETS"] = (int(meta["num_targets"]), "number of target sources")
 
+    # provenance: band, sun geometry, sky brightness
+    if meta.get("band"):
+        header["FILTER"] = (str(meta["band"]), "sensing band (sdasim bands.py)")
+    if meta.get("sun_alt_deg") is not None:
+        header["SUNALT"] = (float(meta["sun_alt_deg"]), "[deg] sun altitude at frame")
+    if meta.get("sun_elongation_deg") is not None:
+        header["SUNELONG"] = (
+            float(meta["sun_elongation_deg"]), "[deg] sun-target elongation"
+        )
+    if meta.get("sky_mag_arcsec2") is not None:
+        header["SKYMAG"] = (
+            float(meta["sky_mag_arcsec2"]), "[mag/arcsec2] sky surface brightness"
+        )
+
     header["SIMULATE"] = (True, "synthetic image from sdasim")
 
     return header

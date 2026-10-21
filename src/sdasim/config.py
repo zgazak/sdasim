@@ -34,8 +34,13 @@ class SensorConfig:
     flat_radiance: float = 0.0
     a2d_bias: float = 500.0
     a2d_dtype: str = "uint16"
+    # Frame-to-frame pointing wander, per-axis RMS arcsec. Each
+    # frame gets one random rigid offset of the whole field (stars + targets),
+    # the short-exposure-stack jitter signature. WITHIN-frame smear is not
+    # simulated here — fold it into psf_sigma in quadrature as v1 did.
+    jitter_rms_arcsec: float = 0.0
     # --- empirical (opt-in) rendering; defaults preserve the Gaussian/basic path ---
-    psf_model: str = "gaussian"  # {"gaussian", "empirical"}
+    psf_model: str = "gaussian"  # {"gaussian", "empirical", "pupil"}
     noise_model: str = "basic"  # {"basic", "empirical"}
     empirical_psf_path: str | None = None  # path to psf_basis.npz
     empirical_noise_path: str | None = None  # path to noise_model.json
@@ -144,6 +149,79 @@ class CatalogConfig:
 
 
 @dataclass
+class SegmentConfig:
+    """One circular segment of a segmented aperture (positions/diameter in meters)."""
+
+    x: float = 0.0  # m, center offset from array center (+x = +column direction)
+    y: float = 0.0  # m
+    d: float = 0.5  # m, segment diameter
+
+
+@dataclass
+class ApertureConfig:
+    """Aperture geometry. Drives collecting area, zeropoint
+    resolution (with ``mirror`` + ``band``), and the optional diffraction PSF
+    (``sensor.psf_model='pupil'``).
+    """
+
+    enabled: bool = False
+    shape: str = "circle"  # circle | ellipse | rect | segmented
+    diameter: float = 1.0  # m: circle diameter; ellipse major axis; rect width
+    diameter_minor: float | None = None  # m: ellipse minor / rect height (None -> diameter)
+    obscuration: float = 0.0  # linear ratio (circle central hole); ellipse/rect: unused
+    segments: list[SegmentConfig] = field(default_factory=list)  # shape='segmented'
+    phased: bool = True  # segmented: co-phased (full-array core) vs incoherent co-add
+    piston_rms_nm: float = 0.0  # phased segmented: residual piston OPD, nm RMS
+    tiptilt_rms_arcsec: float = 0.0  # segmented: per-axis segment tip/tilt, image-space arcsec
+    gap_fraction: float = 0.0  # segmented: gap/pitch ratio -> Strehl (1-w)^4 bookkeeping
+
+
+@dataclass
+class MirrorConfig:
+    """Mirror surface quality + coating.
+
+    Specular throughput per reflection is R_coating * exp(-(4*pi*sigma/lambda)^2)
+    (Bennett-Porteus); the scattered TIS fraction refills a sky-following
+    background term (near-specular roughness scatter), replacing the v1
+    hand-computed background_mv/zeropoint debits.
+    """
+
+    coating: str = "bare_al"  # bare_al | protected_al | protected_ag | gold
+    roughness_nm: float = 9.0  # RMS micro-roughness (v1: porosity-pitted bare SPDT Al)
+    n_reflections: int = 1  # powered/fold mirror count in the train
+
+
+@dataclass
+class BandConfig:
+    """Observing band. When enabled, sensor.zeropoint is COMPUTED
+    from aperture area x mirror throughput x qe x band photon flux (bands.py) and
+    overwrites any YAML value; star magnitudes come from the sstrc7 SED
+    interpolated to the band center; catalog satellite photometry uses the
+    band's solar magnitude.
+    """
+
+    enabled: bool = False
+    name: str = "V"  # V | R | I | J | H | KS | SWIR_YJH (bands.BANDS keys)
+    qe: float = 0.68  # detector QE x non-mirror optics (corrector, window, filter)
+    airmass: float = 1.3  # for the default atmospheric transmission term
+
+
+@dataclass
+class SkyConfig:
+    """Sky background model.
+
+    'static' keeps the v1 behavior (sensor.background_mv, frozen at construction,
+    scatter-brightened when band+mirror are enabled). 'auto' derives the sky
+    per frame from sun position (site + obs_time + pointing) via sky.py:
+    night / twilight (Patat 2006) / daytime (elongation-dependent MODTRAN anchors).
+    """
+
+    model: str = "static"  # static | auto
+    aerosol_delta_mag: float = 0.0  # positive = brighter sky, all regimes
+    elongation_deg: float | None = None  # None -> computed from pointing vs sun
+
+
+@dataclass
 class AberrationsConfig:
     """Static wavefront aberrations in waves RMS (Noll-normalized Zernikes).
 
@@ -243,6 +321,11 @@ class SceneConfig:
     mount_dec_rate: float = 0.0  # deg/s
     # --- geometric defocus/aberration model (additions) ---
     optics: OpticsConfig = field(default_factory=OpticsConfig)
+    # --- aperture/mirror/band/sky (additions) ---
+    aperture: ApertureConfig = field(default_factory=ApertureConfig)
+    mirror: MirrorConfig = field(default_factory=MirrorConfig)
+    band: BandConfig = field(default_factory=BandConfig)
+    sky: SkyConfig = field(default_factory=SkyConfig)
 
 
 _NESTED_TYPES: dict[str, type] = {}
@@ -275,6 +358,10 @@ _FIELD_TYPE_MAP: dict[str, type] = {
     "catalog": CatalogConfig,
     "optics": OpticsConfig,
     "aberrations": AberrationsConfig,
+    "aperture": ApertureConfig,
+    "mirror": MirrorConfig,
+    "band": BandConfig,
+    "sky": SkyConfig,
 }
 
 
@@ -292,6 +379,8 @@ def _dataclass_from_dict(cls, data: dict) -> Any:
                 kwargs[key] = [_dataclass_from_dict(TargetConfig, t) for t in val]
             elif isinstance(val, list) and key == "objects":
                 kwargs[key] = [_dataclass_from_dict(ObjectConfig, o) for o in val]
+            elif isinstance(val, list) and key == "segments":
+                kwargs[key] = [_dataclass_from_dict(SegmentConfig, s) for s in val]
             else:
                 kwargs[key] = val
     return cls(**kwargs)

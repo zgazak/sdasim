@@ -103,6 +103,11 @@ class Scene:
         if config.seed is not None:
             torch.manual_seed(config.seed)
 
+        # Resolve aperture/mirror/band into the classic sensor
+        # scalars (zeropoint, scatter background) BEFORE any star/target
+        # photometry uses them. Also validates the sky model config.
+        self._resolve_optics_config(config)
+
         # Orbital mechanics mode: objects present → derive everything from TLEs
         if config.objects:
             self._init_from_objects(config)
@@ -127,6 +132,13 @@ class Scene:
         pixel_area_arcsec2 = (self.sensor.y_fov * 3600.0 / self.sensor.height) * (
             self.sensor.x_fov * 3600.0 / self.sensor.width
         )
+        self._pixel_area_arcsec2 = pixel_area_arcsec2
+        # sky.model='auto': seed the static bookkeeping value (noise-floor
+        # estimates, metadata defaults) from the frame-0 sun geometry; render
+        # refreshes background_pe per frame from the actual frame time/pointing.
+        if self._sky_auto:
+            mag0, _, _ = self._sky_mag_for_time(0.0)
+            self.sensor.background_mv = float(mag0)
         bg_pe_per_sec = (
             mv_to_pe(self.sensor.zeropoint, self.sensor.background_mv) * pixel_area_arcsec2
         )
@@ -177,6 +189,12 @@ class Scene:
                 splat_rate=self._splat_rate,
             )
 
+        # Diffraction PSF kernel from the aperture mask (opt-in via
+        # sensor.psf_model='pupil'). Built once; rendered through the electron-
+        # domain deposit + FFT-convolve path so saturation physics is preserved.
+        if self.sensor.psf_model == "pupil":
+            self._pupil_kernel = self._build_pupil_kernel(config)
+
         # Empirical (opt-in) bases — loaded once; default path leaves these None
         self._np_rng = np.random.default_rng(config.seed)
         # per-scene torch generator so empirical noise/texture/wobble/speckle are reproducible
@@ -226,6 +244,217 @@ class Scene:
                 "tiptilt": sj.get("dist_tex_tiptilt_rms"),
                 "seeing": sj.get("dist_tex_seeing_rms"),
             }
+
+    def _resolve_optics_config(self, config: SceneConfig) -> None:
+        """Resolve v2 aperture/mirror/band/sky sections into the classic scalars.
+
+        Runs before star/target loading so the resolved zeropoint feeds every
+        photometric conversion. When ``band.enabled``:
+
+        - ``sensor.zeropoint`` is OVERWRITTEN with the computed value
+          (aperture area x mirror specular throughput x qe x band photon flux
+          x atmosphere) — bands.compute_zeropoint. Segmented apertures fold
+          gap/piston Strehl-style core-energy losses into the throughput
+          (detection-mode approximation; see research/apertures_segmented_psf.md).
+        - the roughness-scatter TIS fraction is kept for the sky-following
+          scatter background term (the v1 hand-computed background_mv debit).
+        - star magnitudes switch to the band center via sstrc7 SED
+          interpolation, and catalog satellite photometry uses the band's
+          solar magnitude.
+        """
+        ap, mir, band, sky_cfg = config.aperture, config.mirror, config.band, config.sky
+        self._band = None
+        self._filter_center_nm: float | None = None
+        self._band_solar_mag: float | None = None
+        self._scatter_frac = 0.0
+        self._sky_auto = sky_cfg.model == "auto"
+        self._sky_cache: dict = {}
+        self._pupil_kernel: Tensor | None = None
+        self._aperture_area_m2: float | None = None
+
+        if sky_cfg.model not in ("static", "auto"):
+            raise ValueError(f"sky.model must be 'static' or 'auto', got {sky_cfg.model!r}")
+        if self._sky_auto:
+            if config.site is None or config.obs_time is None:
+                raise ValueError("sky.model='auto' requires site and obs_time to be set")
+            if not band.enabled:
+                raise ValueError(
+                    "sky.model='auto' requires band.enabled (the band name selects the sky table)"
+                )
+
+        if not band.enabled and not ap.enabled:
+            return  # pure v1 config — nothing to resolve
+
+        from sdasim import bands as bands_mod
+        from sdasim import pupil as pupil_mod
+
+        if ap.enabled:
+            self._aperture_area_m2 = self._aperture_area(ap)
+
+        if band.enabled:
+            if not ap.enabled:
+                raise ValueError("band.enabled requires aperture.enabled (area drives zeropoint)")
+            self._band = bands_mod.BANDS[band.name.upper()]
+            self._filter_center_nm = float(self._band.center_nm)
+            self._band_solar_mag = float(self._band.solar_mag)
+
+            throughput = bands_mod.specular_throughput(
+                mir.coating, mir.roughness_nm, self._band, mir.n_reflections
+            )
+            if ap.shape == "segmented":
+                strehl = pupil_mod.gap_strehl(ap.gap_fraction)
+                if ap.phased and ap.piston_rms_nm > 0:
+                    sigma_rad = 2.0 * math.pi * ap.piston_rms_nm / self._band.center_nm
+                    strehl *= pupil_mod.piston_strehl(sigma_rad, max(len(ap.segments), 1))
+                throughput *= strehl
+            config.sensor.zeropoint = float(
+                bands_mod.compute_zeropoint(
+                    self._aperture_area_m2,
+                    throughput,
+                    band.qe,
+                    self._band,
+                    bands_mod.atm_transmission(self._band, band.airmass),
+                )
+            )
+            # Near-specular roughness scatter refills a sky-following background.
+            tis = bands_mod.tis_fraction(mir.roughness_nm, self._band)
+            self._scatter_frac = 1.0 - math.exp(-mir.n_reflections * tis)
+            if not self._sky_auto and self._scatter_frac > 0:
+                config.sensor.background_mv -= 2.5 * math.log10(1.0 + self._scatter_frac)
+
+    def _aperture_area(self, ap) -> float:
+        """Geometric collecting area (m^2) of the configured aperture."""
+        from sdasim import pupil as pupil_mod
+
+        if ap.shape == "circle":
+            return pupil_mod.aperture_area("circle", d=ap.diameter, obscuration=ap.obscuration)
+        if ap.shape == "ellipse":
+            return pupil_mod.aperture_area(
+                "ellipse", d_major=ap.diameter, d_minor=ap.diameter_minor or ap.diameter
+            )
+        if ap.shape == "rect":
+            return pupil_mod.aperture_area(
+                "rect", width=ap.diameter, height=ap.diameter_minor or ap.diameter
+            )
+        if ap.shape == "segmented":
+            if not ap.segments:
+                raise ValueError("aperture.shape='segmented' requires a segments list")
+            segs = [{"x": s.x, "y": s.y, "d": s.d} for s in ap.segments]
+            return pupil_mod.aperture_area("segmented", segments=segs)
+        raise ValueError(f"Unknown aperture.shape: {ap.shape!r}")
+
+    def _build_pupil_kernel(self, config: SceneConfig) -> Tensor:
+        """Diffraction PSF kernel for psf_model='pupil' (built once per Scene).
+
+        FFT-of-pupil kernel (sdasim.pupil) at the band wavelengths, then
+        convolved with the Gaussian seeing/jitter floor (sensor.psf_sigma) so
+        the deposited point sources need no additional blur.
+        """
+        from sdasim import pupil as pupil_mod
+
+        ap = config.aperture
+        if not ap.enabled:
+            raise ValueError("psf_model='pupil' requires aperture.enabled")
+        if config.optics.enabled:
+            raise ValueError(
+                "psf_model='pupil' and optics.enabled are mutually exclusive PSF models — "
+                "the pupil kernel already encodes diffraction + static WFE"
+            )
+
+        if ap.shape == "circle":
+            mask_info = pupil_mod.circle_mask(ap.diameter, obscuration=ap.obscuration)
+        elif ap.shape == "ellipse":
+            mask_info = pupil_mod.ellipse_mask(ap.diameter, ap.diameter_minor or ap.diameter)
+        elif ap.shape == "rect":
+            mask_info = pupil_mod.rect_mask(ap.diameter, ap.diameter_minor or ap.diameter)
+        elif ap.shape == "segmented":
+            segs = [{"x": s.x, "y": s.y, "d": s.d} for s in ap.segments]
+            mask_info = pupil_mod.segmented_mask(segs)
+        else:
+            raise ValueError(f"Unknown aperture.shape: {ap.shape!r}")
+
+        if self._band is not None:
+            c, w = self._band.center_nm, self._band.width_nm
+            wavelengths = [c - 0.35 * w, c, c + 0.35 * w]
+            weights = [0.25, 0.5, 0.25]
+        else:
+            wavelengths = [config.optics.wavelength_nm]
+            weights = [1.0]
+
+        ab = config.optics.aberrations
+        wfe = {
+            k: getattr(ab, k)
+            for k in ("defocus", "astig_0", "astig_45", "coma_x", "coma_y", "spherical")
+            if getattr(ab, k) != 0.0
+        }
+
+        # Odd size so the kernel and empirical.gaussian_kernel agree exactly.
+        kernel_px = int(max(65, math.ceil(12.0 * self.sensor.psf_sigma / 2.0) * 2 + 1)) | 1
+        kern = pupil_mod.psf_kernel(
+            mask_info,
+            wavelengths,
+            weights,
+            f_number=config.optics.f_number,
+            pixel_pitch_um=config.optics.pixel_pitch_um,
+            kernel_px=kernel_px,
+            wfe=wfe or None,
+            seg_piston_rms_nm=ap.piston_rms_nm,
+            seg_tiptilt_rms_arcsec=ap.tiptilt_rms_arcsec,
+            phased=ap.phased,
+            seed=config.seed or 0,
+        )
+        kern_t = torch.tensor(kern, dtype=torch.float32, device=self.device)
+        if self.sensor.psf_sigma > 0.05:
+            from sdasim.empirical import _fft_convolve, gaussian_kernel
+
+            g = gaussian_kernel(float(self.sensor.psf_sigma), kern_t.shape[0], device=self.device)
+            kern_t = _fft_convolve(kern_t, g).clamp(min=0.0)
+        return kern_t / kern_t.sum()
+
+    def _sky_mag_for_time(
+        self,
+        frame_start: float,
+        point_ra: float | None = None,
+        point_dec: float | None = None,
+        obs_time_iso: str | None = None,
+    ) -> tuple[float, float, float]:
+        """(sky_mag_arcsec2, sun_alt_deg, elongation_deg) under sky.model='auto'.
+
+        Sun-driven per-frame sky brightness (sdasim.sky) with the roughness-
+        scatter brightening applied. Cached per (frame time, pointing).
+        """
+        from datetime import datetime, timedelta
+
+        from sdasim import sky as sky_mod
+
+        cfg = self.config
+        ra = float(point_ra if point_ra is not None else cfg.stars.ra)
+        dec = float(point_dec if point_dec is not None else cfg.stars.dec)
+        key = (round(float(frame_start), 3), round(ra, 6), round(dec, 6))
+        if key not in self._sky_cache:
+            if len(self._sky_cache) > 8192:
+                self._sky_cache.clear()
+            base_iso = obs_time_iso or cfg.obs_time
+            base = datetime.fromisoformat(base_iso.replace("Z", "+00:00"))
+            t_frame = base + timedelta(seconds=float(frame_start))
+            site = cfg.site
+            sun_alt, _ = sky_mod.sun_altaz(
+                site.latitude, site.longitude, site.altitude, t_frame
+            )
+            if cfg.sky.elongation_deg is not None:
+                elong = float(cfg.sky.elongation_deg)
+            else:
+                elong = sky_mod.elongation_deg(sky_mod.sun_radec(t_frame), (ra, dec))
+            mag = sky_mod.sky_brightness(
+                cfg.band.name,
+                sun_alt,
+                elong,
+                aerosol_delta_mag=cfg.sky.aerosol_delta_mag,
+            )
+            if self._scatter_frac > 0:
+                mag -= 2.5 * math.log10(1.0 + self._scatter_frac)
+            self._sky_cache[key] = (float(mag), float(sun_alt), float(elong))
+        return self._sky_cache[key]
 
     def _load_stars(self, config: SceneConfig) -> None:
         """Load star catalog based on config."""
@@ -278,6 +507,7 @@ class Scene:
             pad_mult=sc.pad_mult,
             mv_max=sc.mv_max,
             device=self.device,
+            filter_center=self._filter_center_nm,
         )
 
     def _stars_for_pointing(self, ra: float, dec: float) -> tuple[Tensor, Tensor]:
@@ -511,10 +741,13 @@ class Scene:
             d = float(d.detach().reshape(()).item()) if isinstance(d, Tensor) else float(d)
             pad += self.optics.blur_radius_px(d)
 
+        kwargs = {}
+        if self._band_solar_mag is not None:
+            kwargs["sun_mag"] = self._band_solar_mag
         return discover_streaks(
             self._catalog, t_frame, cfg.site, sensor,
             point_ra, point_dec, mr_rad, md_rad,
-            cat.albedo, pad,
+            cat.albedo, pad, **kwargs,
         )
 
     def render(self, frame_idx: int = 0, **overrides: Any) -> tuple[Tensor, dict]:
@@ -536,8 +769,21 @@ class Scene:
         sensor = self.sensor
         sm = self.config.star_motion
 
-        # Frame timing
-        frame_start = frame_idx * (sensor.exposure + sensor.gap)
+        # Per-frame exposure: 'exposure_s' scales source/background/
+        # dark electrons and streak lengths without a Scene rebuild — the
+        # short-exposure-stack knob. Explicit star/target intensity overrides
+        # are interpreted at the CONFIG exposure and scaled identically.
+        if sensor.exposure <= 0:
+            raise ValueError("sensor.exposure must be > 0")
+        exposure = float(overrides.get("exposure_s", sensor.exposure))
+        if exposure <= 0:
+            raise ValueError("exposure_s override must be > 0")
+        exp_scale = exposure / sensor.exposure
+
+        # Frame timing ('frame_start_s' decouples stack timing from idx*(exp+gap))
+        frame_start = float(
+            overrides.get("frame_start_s", frame_idx * (exposure + sensor.gap))
+        )
 
         # Determine frame mode for rate_sidereal
         is_sidereal = (
@@ -585,6 +831,12 @@ class Scene:
         target_positions = overrides.get("target_positions", tgt_pos)
         target_intensities = overrides.get("target_intensities", tgt_int)
         target_velocities = overrides.get("target_velocities", tgt_vel)
+
+        # Source intensities bake the CONFIG exposure in at load; rescale for a
+        # per-frame exposure override (new tensors — never mutate the cache).
+        if exp_scale != 1.0:
+            star_intensities = star_intensities * exp_scale
+            target_intensities = target_intensities * exp_scale
 
         # Shutter closed / lamp on: no sources. Empty slices keep device/dtype,
         # and the motion/osf machinery below already tolerates zero sources.
@@ -634,7 +886,7 @@ class Scene:
                     dtype=torch.float32, device=self.device,
                 )
                 extra_int = torch.tensor(
-                    [mv_to_pe(sensor.zeropoint, s.mv) * sensor.exposure for s in streaks],
+                    [mv_to_pe(sensor.zeropoint, s.mv) * exposure for s in streaks],
                     dtype=torch.float32, device=self.device,
                 )
                 extra_vel = torch.tensor(
@@ -701,6 +953,22 @@ class Scene:
                 center,
             )
 
+        # --- Frame-to-frame pointing jitter: one rigid random
+        # offset of the whole field per frame (mount wander between short
+        # exposures). Within-frame smear stays folded into psf_sigma.
+        jitter_offset_px = None
+        jitter_arcsec = float(overrides.get("jitter_rms_arcsec", sensor.jitter_rms_arcsec))
+        if jitter_arcsec > 0 and frame_type == "light":
+            ps_row = sensor.y_fov * 3600.0 / sensor.height
+            ps_col = sensor.x_fov * 3600.0 / sensor.width
+            dr = float(self._np_rng.normal(0.0, jitter_arcsec / ps_row))
+            dc = float(self._np_rng.normal(0.0, jitter_arcsec / ps_col))
+            off = torch.tensor([dr, dc], dtype=torch.float32, device=self.device)
+            star_positions = star_positions + off
+            if target_positions.shape[0] > 0:
+                target_positions = target_positions + off
+            jitter_offset_px = [dr, dc]
+
         # Resolve star motion sampling. An int (from config or the pinned
         # branches above) wins verbatim; None means auto — sample the streak
         # finely enough that beading stays below this frame's own noise floor,
@@ -730,7 +998,7 @@ class Scene:
         star_osf_clamped = False
         if star_osf is None:
             peak_pe, noise_pe = self._streak_photometry(
-                star_intensities, star_vel, star_rot, sensor.exposure, sigma_scalar, r_max
+                star_intensities, star_vel, star_rot, exposure, sigma_scalar, r_max
             )
             spacing_px = max(
                 motion_sampling_spacing(
@@ -739,7 +1007,7 @@ class Scene:
                 blur_spacing,
             )
             star_osf, star_osf_clamped = resolve_temporal_osf(
-                None, star_vel, star_rot, sensor.exposure, spacing_px, r_max,
+                None, star_vel, star_rot, exposure, spacing_px, r_max,
                 star_positions.shape[0], self._subsource_budget(),
             )
 
@@ -760,10 +1028,10 @@ class Scene:
                 else max(budget - star_positions.shape[0] * star_osf, 0)
             )
             t_peak, t_noise = self._streak_photometry(
-                target_intensities, [tmax, 0.0], 0.0, sensor.exposure, sigma_scalar, r_max
+                target_intensities, [tmax, 0.0], 0.0, exposure, sigma_scalar, r_max
             )
             target_osf, target_osf_clamped = resolve_temporal_osf(
-                None, [tmax, 0.0], 0.0, sensor.exposure,
+                None, [tmax, 0.0], 0.0, exposure,
                 max(
                     motion_sampling_spacing(
                         sigma_scalar, t_peak, t_noise, self.config.sampling_quality
@@ -775,6 +1043,7 @@ class Scene:
 
         defer_read_noise = overrides.get("defer_read_noise", False)
 
+        sky_meta = None
         use_empirical = sensor.psf_model == "empirical" or sensor.noise_model == "empirical"
         psf_params = None
         tex_used = None
@@ -816,7 +1085,7 @@ class Scene:
                 star_rotation=star_rot,
                 target_velocities=target_velocities,
                 t_osf=star_osf,
-                exposure=sensor.exposure,
+                exposure=exposure,
                 tex_scint_rms=tex["scint_rms"],
                 tex_tiptilt_rms=tex["tiptilt_rms"],
                 tex_seeing_rms=tex["seeing_rms"],
@@ -834,15 +1103,32 @@ class Scene:
         else:
             # Component budget per frame type: only what the shutter/illumination
             # admits (light keeps everything; flat swaps sky for the lamp).
-            background_pe = self.background_pe
-            dark_current_pe = self.dark_current_pe
+            # sky.model='auto' refreshes the sky from the frame's sun geometry.
+            if self._sky_auto and frame_type == "light":
+                mag, sun_alt, elong = self._sky_mag_for_time(
+                    frame_start,
+                    overrides.get("point_ra"),
+                    overrides.get("point_dec"),
+                    overrides.get("obs_time"),
+                )
+                sky_meta = {
+                    "sky_mag_arcsec2": mag,
+                    "sun_alt_deg": sun_alt,
+                    "sun_elongation_deg": elong,
+                }
+                background_pe = float(
+                    mv_to_pe(sensor.zeropoint, mag) * self._pixel_area_arcsec2 * exposure
+                )
+            else:
+                background_pe = self.background_pe * exp_scale
+            dark_current_pe = self.dark_current_pe * exp_scale
             if frame_type == "dark":
                 background_pe = 0.0
             elif frame_type == "bias":
                 background_pe = 0.0
                 dark_current_pe = 0.0
             elif frame_type == "flat":
-                background_pe = sensor.flat_radiance * sensor.exposure
+                background_pe = sensor.flat_radiance * exposure
             digital, star_signal, target_signal = render_frame(
                 height=sensor.height,
                 width=sensor.width,
@@ -868,9 +1154,10 @@ class Scene:
                 target_velocities=target_velocities,
                 t_osf=star_osf,
                 target_t_osf=target_osf,
-                exposure=sensor.exposure,
+                exposure=exposure,
                 optics=self.optics if frame_type == "light" else None,
                 defocus_um=defocus_um,
+                psf_kernel=self._pupil_kernel,
             )
 
         # Frame mode label
@@ -900,7 +1187,7 @@ class Scene:
             "target_velocities": (
                 target_velocities.detach().cpu().tolist() if target_velocities is not None else []
             ),  # [[row_rate, col_rate], ...] px/sec
-            "exposure": sensor.exposure,  # seconds
+            "exposure": exposure,  # seconds (config value unless exposure_s override)
             "obs_time": self.config.obs_time,
             "point_ra": overrides.get("point_ra", self.config.stars.ra),  # deg (star-field center)
             "point_dec": overrides.get("point_dec", self.config.stars.dec),  # deg
@@ -928,6 +1215,20 @@ class Scene:
             "noise_model": sensor.noise_model,
             "psf_params": ([float(p) for p in psf_params] if psf_params is not None else None),
             "streak_texture": (tex_used if tex_used is not None else None),
+            # --- provenance ---
+            "band": self._band.name if self._band is not None else None,
+            "filter_center_nm": self._filter_center_nm,
+            "sky_model": self.config.sky.model,
+            "sky_mag_arcsec2": (
+                sky_meta["sky_mag_arcsec2"] if sky_meta else sensor.background_mv
+            ),
+            "sun_alt_deg": sky_meta["sun_alt_deg"] if sky_meta else None,
+            "sun_elongation_deg": sky_meta["sun_elongation_deg"] if sky_meta else None,
+            "jitter_offset_px": jitter_offset_px,
+            "aperture_shape": (
+                self.config.aperture.shape if self.config.aperture.enabled else None
+            ),
+            "aperture_area_m2": self._aperture_area_m2,
             "_height": sensor.height,
             "_width": sensor.width,
         }

@@ -198,6 +198,7 @@ def render_frame(
     exposure: float = 1.0,
     optics: "OpticsModel | None" = None,
     defocus_um: float | Tensor = 0.0,
+    psf_kernel: Tensor | None = None,
 ) -> tuple[Tensor, Tensor, Tensor]:
     """Render a single frame through the full pipeline.
 
@@ -228,10 +229,18 @@ def render_frame(
             sub-sources (composes with motion expansion).
         defocus_um: Commanded focal shift from best focus in microns (may be a
             scalar tensor to keep gradients to the focus command).
+        psf_kernel: Optional (K, K) normalized PSF kernel (e.g. a diffraction
+            kernel from sdasim.pupil for non-circular/segmented apertures).
+            When given, sources are bilinear-deposited and FFT-convolved with
+            the kernel instead of Gaussian-splatted (psf_sigma unused for the
+            PSF; motion expansion still applies). Mutually exclusive with
+            ``optics`` — the kernel already encodes diffraction + static WFE.
 
     Returns:
         (digital, star_signal, target_signal): Digital image, star-only PE, target-only PE.
     """
+    if psf_kernel is not None and optics is not None:
+        raise ValueError("psf_kernel and optics are mutually exclusive PSF models")
     center = (height / 2.0, width / 2.0)
 
     # --- Stars: within-frame motion blur ---
@@ -271,7 +280,12 @@ def render_frame(
             # were budget-clamped).
             star_optics_stats = (optics.last_k, optics.last_blur_px, optics.last_clamped)
 
-    star_signal = splat_gaussians(height, width, exp_pos, exp_int, psf_sigma)
+    if psf_kernel is not None:
+        from sdasim.empirical import render_empirical_signal
+
+        star_signal = render_empirical_signal(height, width, exp_pos, exp_int, psf_kernel)
+    else:
+        star_signal = splat_gaussians(height, width, exp_pos, exp_int, psf_sigma)
 
     # --- Targets: per-target within-frame motion blur ---
     # Use target_t_osf if provided (Scene resolves it against the noise floor
@@ -320,7 +334,12 @@ def render_frame(
             optics.last_k, optics.last_blur_px = k, blur
             optics.last_clamped = clamped or optics.last_clamped
 
-    target_signal = splat_gaussians(height, width, tgt_exp_pos, tgt_exp_int, psf_sigma)
+    if psf_kernel is not None:
+        from sdasim.empirical import render_empirical_signal
+
+        target_signal = render_empirical_signal(height, width, tgt_exp_pos, tgt_exp_int, psf_kernel)
+    else:
+        target_signal = splat_gaussians(height, width, tgt_exp_pos, tgt_exp_int, psf_sigma)
 
     # Combine signal
     signal = star_signal + target_signal
